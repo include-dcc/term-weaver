@@ -16,12 +16,13 @@ Automate the process of materializing the intensional enumerations for a LinkML 
 
 ### Goals
 
-- Intensional enums will be remain independent of the actual LinkML model and never be replaced by extensional products of the materializations.
-- Output from the materialization will be independent YAML files to minimize merge-conflicts and help with PR reviews.
+- Intensional enumerations will reside in their own repo, which will be linked as a submodule of the expanded module to a predefined path (source) in the route.
+- The resulting output for the model will identical in terms of the file names and counts, except that any enumeration that can be expanded will include those extensional terms. The expectation for that source model is that each enumeration will exist in it's own LinkML YAML file.
+- The final model will be represented as individual YAML files files to minimize merge-conflicts and help with PR reviews.
 - If there are enumerations present in the source YAML file, they will carry over untouched and be available alongisde the products of materialization.
 - Output will be a 'complete' LinkML model that can be built and reviewed as any other model, even if there are no classes.
 - Refreshing enums periodically to incorporate changes from external ontologies over time.
-- Maintain the unmaterialized, intensional enumerations to accomadate changes over time.
+- Maintain the unmaterialized, intensional enumerations to accomadate changes to those source enumerations over time.
 
 
 ### Non-Goals
