@@ -5,13 +5,13 @@
 | | |
 |---|---|
 | **Created** | 2026-05-13 |
-| **Updated** | 2026-05-13 |
+| **Updated** | 2026-05-14 |
 | **Reviewers** | — |
 
 
 ## 1. Overview
 
-Automate the process of materializing the intensional enumerations for a  LinkML model and build out a functional LinkML model containing those extensional enums as standalone YAML model components.
+Automate the process of materializing the intensional enumerations for a LinkML model and build out a functional LinkML model containing those extensional enums as standalone YAML model components.
 
 
 ### Goals
@@ -120,8 +120,9 @@ LinkML 'model' will be maintained as part of a single YAML file. The output will
 | `ontology-access-kit` | — | This does the heavy lifting of the materializations |  |
 | `argparse` | stdlib | CLI argument parsing — Python's built-in equivalent of minimist/yargs |  — [docs](https://docs.python.org/3/library/argparse.html) |
 | `pathlib` | stdlib | Python classes representing filesystem paths with semantics appropriate for different operating systems. |  — [docs](https://docs.python.org/3/library/pathlib.html) |
-| `pyyaml` | — | Python library that provides ability to serialize python objects <=> YAML format. |  — [docs](https://pyyaml.org/) |
 | `subprocess` | stdlib | Execute vskit and capture stderr and stdout to local variables |  — [Official Docs](https://docs.python.org/3/library/subprocess.html) · [Tutorial](https://www.geeksforgeeks.org/python/python-subprocess-module/) |
+| `pyyaml` | — | Python library that provides ability to serialize python objects <=> YAML format. |  — [docs](https://pyyaml.org/) |
+| `requests` | — | Requests allows you to send HTTP/1.1 requests extremely easily. |  — [Official Docs](https://requests.readthedocs.io/en/latest/) · [Quickstart](https://requests.readthedocs.io/en/latest/user/quickstart/) |
 
 
 ## 6. Implementation Approach
@@ -146,7 +147,7 @@ Errors will be logged using standard python logging.
 
 ### Logging
 
-All log-levels should be supported with a reasonable defult (INFO).  - At the DEBUG level, all information captured from the vskit should be provided. - At INFO, only highlights of what is being done and which files are read/written - All errors and warnings will be clearly noted as such in the logs.
+All log-levels should be supported with a reasonable defult (INFO). - At the DEBUG level, all information captured from the vskit should be provided. - At INFO, only highlights of what is being done and which files are read/written - All errors and warnings will be clearly noted as such in the logs.
 
 
 ## 7. Testing Strategy
@@ -188,6 +189,15 @@ Basic tests from the application itself to confirm all relevant artifacts define
 - Many input to 1 materialized repo. This was not well suited for the goals
 
 
+### D-003 — Rather than try to pull YAML files down via requests, the best approach will be to establish convention for where the script will find them and how to use submodules to link the source YAML files into the conventions source directory.
+
+**Date:** 2026-05-14  
+**Rationale:** This enables the script with minimal arguments and zero configuration. The submodule will provide the context necessary to identify where the source comes from and can ensure that they are update to date using a simple git command.
+
+**Alternatives considered:**
+- Download files via Release archives via curl or requests or github api. This could have value, but requires some way to tie the source files to the enumerated files. Again, this could be by convention (replace expanded with source in the repo name) but there were other issues to consider that made the approach imperfect at best
+
+
 ## 11. Appendix
 
 
@@ -203,4 +213,4 @@ Basic tests from the application itself to confirm all relevant artifacts define
 
 
 ---
-*Generated from `design.yaml` on 2026-05-13*
+*Generated from `design.yaml` on 2026-05-14*
