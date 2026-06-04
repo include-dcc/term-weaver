@@ -9,7 +9,7 @@ __pycache__/
 .direnv
 
 # Temp place for script to turn the design into MD
-scripts
+#scripts
 
 # C extensions
 *.so
