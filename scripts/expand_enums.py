@@ -15,6 +15,7 @@ def parsed_csv(csv_text: str) -> dict:
     for row in reader:
         code = row["descendant_code"]
         if code.lower() == "no results":
+            print(f"No descendants found for {row['parent_code']}")
             continue
         description = row.get("description", "")
         if description.startswith("['") and description.endswith("']"):
@@ -78,19 +79,23 @@ def expand(
             all_permissible_values = {}
             node_failed = False
             for node in source_nodes:
+                cmd = [
+                    "dragon_search",
+                    "-ak",
+                    str(node),
+                    "-o",
+                    str(ontology),
+                    "-f",
+                    str(expanded_enum),
+                    "-d",
+                    "-s",
+                    "0",
+                ]
+                if iri:
+                    cmd.extend(["-i", str(iri)])
+
                 result = subprocess.run(
-                    [
-                        "dragon_search",
-                        "-ak",
-                        str(node),
-                        "-o",
-                        str(ontology),
-                        "-f",
-                        str(expanded_enum),
-                        "-d",
-                        "-s",
-                        "0",
-                    ],
+                    cmd,
                     capture_output=True,
                     text=True,
                 )
@@ -141,7 +146,16 @@ if __name__ == "__main__":
         type=Path,
         help="The directory where expanded output YAML files will be written",
     )
+    parser.add_argument(
+        "-i",
+        "--iri",
+        required=False,
+        default=None,
+        help="Optional iri for the parent code to pull descendants.",
+    )
 
     args = parser.parse_args()
 
-    enums = expand(local_filepath=args.source, output_filepath=args.output)
+    enums = expand(
+        local_filepath=args.source, output_filepath=args.output, iri=args.iri
+    )
