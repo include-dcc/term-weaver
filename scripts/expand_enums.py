@@ -1,9 +1,30 @@
 import argparse
+import csv
+import io
 import logging
 import subprocess
 from pathlib import Path
 
 import yaml
+
+
+def parsed_csv(csv_text: str) -> dict:
+    """Parse dragon_search CSV output into permissible_values object for enum yaml file."""
+    reader = csv.DictReader(io.StringIO(csv_text))
+    permissible_values = {}
+    for row in reader:
+        code = row["descendant_code"]
+        if code.lower() == "no results":
+            continue
+        description = row.get("description", "")
+        if description.startswith("['") and description.endswith("']"):
+            description = description[2:-2]
+        permissible_values[code] = {
+            "text": code,
+            "description": description,
+            "title": row.get("display", ""),
+        }
+    return permissible_values
 
 
 class IndentedDumper(yaml.Dumper):
@@ -45,33 +66,57 @@ def expand(
                 expanded_count += 1
                 continue
 
-            reachable = enum.get("reachable_from") or {}
-            source_onto = reachable.get("source_ontology")
+            reachable_from = enum.get("reachable_from") or {}
+            source_onto = reachable_from.get("source_ontology")
+            source_nodes = reachable_from.get("source_nodes")
             if not source_onto:
                 continue
             ontology = source_onto.split(":")[1]
+            if not source_nodes:
+                continue
 
-            result = subprocess.run(
-                [
-                    "dragon_search",
-                    "-o",
-                    str(ontology),
-                    "-i",
-                    str(iri),
-                    "-f",
-                    str(expanded_enum),
-                    "-d",
-                ],
-                capture_output=True,
-                text=True,
-            )
-            enum_count += 1
-            if result.returncode != 0:
-                logging.error(f"Failed for {name}: {result.stdout}")
-                logging.error(f"Failed for {name}: {result.stderr}")
-            else:
-                expanded_count += 1
-                logging.info(f"Expanded enumeration: {name}")
+            all_permissible_values = {}
+            node_failed = False
+            for node in source_nodes:
+                result = subprocess.run(
+                    [
+                        "dragon_search",
+                        "-ak",
+                        str(node),
+                        "-o",
+                        str(ontology),
+                        "-f",
+                        str(expanded_enum),
+                        "-d",
+                        "-s",
+                        "0",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                enum_count += 1
+                if result.returncode != 0:
+                    logging.error(f"Failed for {name}: {result.stdout}")
+                    logging.error(f"Failed for {name}: {result.stderr}")
+                    node_failed = True
+                else:
+                    parsed_nodes = parsed_csv(expanded_enum.read_text())
+                    all_permissible_values.update(parsed_nodes)
+                    logging.info(f"Expanded enumeration: {name}")
+
+                if all_permissible_values:
+                    parsed["enums"][name]["permissible_values"] = all_permissible_values
+                    expanded_enum.write_text(
+                        yaml.dump(
+                            parsed,
+                            Dumper=IndentedDumper,
+                            default_flow_style=False,
+                            sort_keys=False,
+                            allow_unicode=True,
+                        )
+                    )
+                    if not node_failed:
+                        expanded_count += 1
 
     if expanded_count != enum_count:
         logging.error(f"{enum_count - expanded_count} failed to be expanded.")
@@ -96,15 +141,7 @@ if __name__ == "__main__":
         type=Path,
         help="The directory where expanded output YAML files will be written",
     )
-    parser.add_argument(
-        "-i",
-        "--iri",
-        required=True,
-        help="A string value containing the iri for the code",
-    )
 
     args = parser.parse_args()
 
-    enums = expand(
-        local_filepath=args.source, output_filepath=args.output, iri=args.iri
-    )
+    enums = expand(local_filepath=args.source, output_filepath=args.output)
