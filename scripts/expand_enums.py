@@ -60,9 +60,15 @@ def expand(
         for name, enum in enums.items():
             expanded_enum = output_filepath / f"{name}.yaml"
 
-            if "permissible_values" in (enum) and enum["permissible_values"]:
+            has_permissible = (
+                "permissible_values" in (enum) and enum["permissible_values"]
+            )
+            has_ontology = enum.get("reachable_from") and enum["reachable_from"].get(
+                "source_ontology"
+            )
+            if has_permissible or not has_ontology:
                 expanded_enum.write_text(raw_enum)
-                logging.info(f"Copied {name} (permissible_values already exists)")
+                logging.info(f"Copied {name} (does not require expansion)")
                 enum_count += 1
                 expanded_count += 1
                 continue
