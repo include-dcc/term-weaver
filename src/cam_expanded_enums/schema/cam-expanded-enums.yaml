@@ -1,0 +1,74 @@
+---
+id: https://includedcc.org/cam-expanded-enums
+name: cam-expanded-enums
+title: Common Access Model Expanded Enums
+description: LinkML Schema for the Common Access Model Expanded Enums
+license: MIT
+see_also:
+  - https://includedcc.github.io/common-access-model
+
+prefixes:
+  cam: https://includedcc.org/common-access-model/
+  linkml: https://w3id.org/linkml/
+  schema: http://schema.org/
+  # subset of CDC Race and Ethnicity Code Set Version 1.0
+  cdc_race_eth: urn:oid:2.16.840.1.113883.6.238/
+  hl7_null: http://terminology.hl7.org/CodeSystem/v3-NullFlavor/
+  ig_dob_method: https://nih-ncpi.github.io/ncpi-fhir-ig-2/CodeSystem/research-data-date-of-birth-method/
+  igcondtype: https://nih-ncpi.github.io/ncpi-fhir-ig-2/CodeSystem/condition-type/
+  ig2dac: https://nih-ncpi.github.io/ncpi-fhir-ig-2/CodeSystem/research-data-access-code/
+  ig2dat: https://nih-ncpi.github.io/ncpi-fhir-ig-2/CodeSystem/research-data-access-type/
+  ig2_biospecimen_availability: https://nih-ncpi.github.io/ncpi-fhir-ig-2/CodeSystem/biospecimen-availability/
+  snomed_ct: http://snomed.info/id/
+  MONDO: http://purl.obolibrary.org/obo/MONDO_
+  HP: http://purl.obolibrary.org/obo/HP_
+  mesh: http://id.nlm.nih.gov/mesh/
+  NCIT: http://purl.obolibrary.org/obo/NCIT_
+  PATO: http://purl.obolibrary.org/obo/PATO_
+  DUO: http://purl.obolibrary.org/obo/DUO_
+
+default_prefix: cam
+default_range: string
+
+imports:
+  - linkml:types
+  - EnumDataUsePermission
+  - EnumDataUseModifier
+  - EnumProgram
+  - EnumResearchDomain
+  - EnumParticipantLifespanStage
+  - EnumStudyDesign
+  - EnumClinicalDataSourceType
+  - EnumDataCategory
+  - EnumSubjectType
+  - EnumSex
+  - EnumRace
+  - EnumEthnicity
+  - EnumVitalStatus
+  - EnumNull
+  - EnumFamilyType
+  - EnumConsanguinityAssertion
+  - EnumAssertionProvenance
+  - EnumAvailabilityStatus
+  - EnumSampleCollectionMethod
+  - EnumSite
+  - EnumSpatialQualifiers
+  - EnumLaterality
+  - EnumEDAMFormats
+  - EnumEDAMDataTypes
+  - EnumFileHashType
+
+classes:
+  RequiredClass:
+    description: "This is a placeholder class to satisfy the LinkML requirement of at least one class and is not otherwise used."
+    attributes:
+      id:
+        description: "Unique identifier"
+      full_name:
+        description: "Full name"
+      aliases:
+        description: "Aliases"
+      phone:
+        description: "Phone number"
+      age:
+        description: "Age"

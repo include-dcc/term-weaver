@@ -1,0 +1,17 @@
+# Changes here will be overwritten by Copier
+_commit: v0.5.0
+_src_path: https://github.com/linkml/linkml-project-copier
+add_example: false
+copyright_year: '2026'
+email: yelena.cox@vumc.org
+existing_license_file: ''
+full_name: Yelena Cox
+gh_action_docs_preview: false
+gh_action_pypi: false
+github_org: include-dcc
+license: MIT
+project_description: This project is a LinkML model containing expanded enumerations
+    from the Common Access Model.
+project_name: cam-expanded-enums
+project_slug: cam_expanded_enums
+

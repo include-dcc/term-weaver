@@ -1,0 +1,34 @@
+id: https://includedcc.org/common-access-model/EnumDataUsePermission
+name: EnumDataUsePermission
+enums:
+  EnumDataUsePermission:
+    title: Data Use Permission
+    description: Data Use Ontology (DUO) terms for data use permissions.
+    reachable_from:
+      source_ontology: bioregistry:duo
+      source_nodes:
+        - DUO:0000001
+      is_direct: false
+      relationship_types:
+        - rdfs:subClassOf
+    permissible_values:
+      DUO:0000004:
+        text: DUO:0000004
+        description: no restriction
+        title: no restriction
+      DUO:0000006:
+        text: DUO:0000006
+        description: health or medical or biomedical research
+        title: health or medical or biomedical research
+      DUO:0000007:
+        text: DUO:0000007
+        description: disease specific research
+        title: disease specific research
+      DUO:0000011:
+        text: DUO:0000011
+        description: population origins or ancestry research only
+        title: population origins or ancestry research only
+      DUO:0000042:
+        text: DUO:0000042
+        description: general research use
+        title: general research use

@@ -1,0 +1,52 @@
+id: https://includedcc.org/common-access-model/EnumDataCategory
+name: EnumDataCategory
+enums:
+  EnumDataCategory:
+    title: Data Category
+    description: Categories of data which may be collected about participants.
+    permissible_values:
+      unharmonized_demographic_clinical_data:
+        text: unharmonized_demographic_clinical_data
+        title: Unharmonized Demographic/Clinical Data
+      harmonized_demographic_clinical_data:
+        text: harmonized_demographic_clinical_data
+        title: Harmonized Demographic/Clinical Data
+      genomics:
+        text: genomics
+        title: Genomics
+      transcriptomics:
+        text: transcriptomics
+        title: Transcriptomics
+      epigenomics:
+        text: epigenomics
+        title: Epigenomics
+      proteomics:
+        text: proteomics
+        title: Proteomics
+      metabolomics:
+        text: metabolomics
+        title: Metabolomics
+      cognitive_behavioral:
+        text: cognitive_behavioral
+        title: Cognitive/Behavioral
+      immune_profiling:
+        text: immune_profiling
+        title: Immune Profiling
+      imaging:
+        text: imaging
+        title: Imaging
+      microbiome:
+        text: microbiome
+        title: Microbiome
+      fitness:
+        text: fitness
+        title: Fitness
+      physical_activity:
+        text: physical_activity
+        title: Physical Activity
+      other:
+        text: other
+        title: Other
+      sleep_study:
+        text: sleep_study
+        title: Sleep Study

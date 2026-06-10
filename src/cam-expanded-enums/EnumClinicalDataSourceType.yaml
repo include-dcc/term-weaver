@@ -1,0 +1,29 @@
+id: https://includedcc.org/common-access-model/EnumClinicalDataSourceType
+name: EnumClinicalDataSourceType
+enums:
+  EnumClinicalDataSourceType:
+    title: Clinical Data Source Type
+    description: Approaches to ascertain clinical information about a 
+      participant.
+    permissible_values:
+      medical_record:
+        text: medical_record
+        description: Data obtained directly from medical record
+        title: Medical Record
+      investigator_assessment:
+        text: investigator_assessment
+        description: Data obtained by examination, interview, etc. with 
+          investigator
+        title: Investigator Assessment
+      participant_or_caregiver_report:
+        text: participant_or_caregiver_report
+        description: Data obtained from survey, questionnaire, etc. filled out 
+          by participant or caregiver
+        title: Participant or Caregiver Report
+      other:
+        text: other
+        description: Data obtained from other source, such as tissue bank
+        title: Other
+      unknown:
+        text: unknown
+        title: Unknown
