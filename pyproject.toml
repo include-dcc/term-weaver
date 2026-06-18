@@ -16,7 +16,9 @@ dependencies = [
     "linkml",
     "PyYAML",
     "jinja2",
-    "search-dragon@git+https://github.com/NIH-NCPI/search-dragon.git"]
+    "search-dragon@git+https://github.com/NIH-NCPI/search-dragon.git"
+    ]
+
 dynamic = ["version"]
 
 [project.optional-dependencies]
