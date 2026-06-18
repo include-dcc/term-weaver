@@ -1,6 +1,12 @@
+import argparse
+import csv
+import io
 import logging
+import subprocess
 import sys
-from argparse import ArgumentParser  # , FileType
+from pathlib import Path
+
+import yaml
 
 # Rich Logging if rich is installed
 if sys.stderr.isatty():
@@ -35,10 +41,136 @@ def init_logging(loglevel: str | None = None):
     )
 
 
+def parsed_csv(csv_text: str) -> dict:
+    """Parse dragon_search CSV output into permissible_values object for enum yaml file."""
+    reader = csv.DictReader(io.StringIO(csv_text))
+    permissible_values = {}
+    for row in reader:
+        code = row["descendant_code"]
+        if code.lower() == "no results":
+            print(f"No descendants found for {row['parent_code']}")
+            continue
+        permissible_values[code] = {
+            "text": code,
+            "description": row.get("description", ""),
+            "title": row.get("display", ""),
+        }
+    return permissible_values
+
+
+class IndentedDumper(yaml.Dumper):
+    def increase_indent(self, flow=False, indentless=False):
+        return super().increase_indent(flow=flow, indentless=False)
+
+
+def expand(
+    local_filepath: Path | None = None,
+    output_filepath: Path | None = None,
+    iri: str | None = None,
+):
+    """Extract Enums from a monolithic LinkML model into individual YAML files
+    Args:
+        local_filepath: The file containing the monolithic linkml model
+        output_filepath: The directory where the enum YAMLs are to be written
+        iri: Optional iri if a specific iri is desired other than the iri derived programattically
+    Returns:
+        list of enum names
+    """
+    if output_filepath is None:
+        output_filepath = Path("output")
+
+    output_filepath.mkdir(parents=True, exist_ok=True)
+    enum_count = 0
+    expanded_count = 0
+    for enum_file in local_filepath.glob("Enum*.yaml"):
+        raw_enum = enum_file.read_text()
+        parsed = yaml.safe_load(raw_enum)
+
+        enums = parsed.get("enums", {})
+        for name, enum in enums.items():
+            expanded_enum = output_filepath / f"{name}.yaml"
+
+            has_permissible = (
+                "permissible_values" in (enum) and enum["permissible_values"]
+            )
+
+            has_reachable = enum.get("reachable_from") or {}
+            has_ontology = has_reachable.get("source_ontology")
+            has_nodes = has_reachable.get("source_nodes")
+            has_direct = has_reachable.get("is_direct")
+
+            endpoint = "-c" if has_direct else "-d"
+
+            if has_permissible or not has_ontology:
+                expanded_enum.write_text(raw_enum)
+                logging.info(f"Copied {name} (does not require expansion)")
+                enum_count += 1
+                expanded_count += 1
+                continue
+
+            if not has_ontology:
+                continue
+            ontology = has_ontology.split(":")[1]
+            if not has_nodes:
+                continue
+
+            all_permissible_values = {}
+            node_failed = False
+            for node in has_nodes:
+                cmd = [
+                    "dragon_search",
+                    "-ak",
+                    str(node),
+                    "-o",
+                    str(ontology),
+                    "-f",
+                    str(expanded_enum),
+                    str(endpoint),
+                    "-s",
+                    "0",
+                ]
+                if has_reachable.get("include_self"):
+                    cmd.append("-p")
+                if iri:
+                    cmd.extend(["-i", str(iri)])
+
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                )
+                enum_count += 1
+                if result.returncode != 0:
+                    logging.error(f"Failed for {name}: {result.stdout}")
+                    logging.error(f"Failed for {name}: {result.stderr}")
+                    node_failed = True
+                else:
+                    parsed_nodes = parsed_csv(expanded_enum.read_text())
+                    all_permissible_values.update(parsed_nodes)
+                    logging.info(f"Expanded enumeration: {name}")
+
+                if all_permissible_values:
+                    parsed["enums"][name]["permissible_values"] = all_permissible_values
+                    expanded_enum.write_text(
+                        yaml.dump(
+                            parsed,
+                            Dumper=IndentedDumper,
+                            default_flow_style=False,
+                            sort_keys=False,
+                            allow_unicode=True,
+                        )
+                    )
+                    if not node_failed:
+                        expanded_count += 1
+
+    if expanded_count != enum_count:
+        logging.error(f"{enum_count - expanded_count} failed to be expanded.")
+
+
 def exec(args: list[str] | None = None):
-    parser = ArgumentParser(
-        prog="term-weaver",
-        description="""Materializing Enumerations since 2026""",
+
+    parser = argparse.ArgumentParser(
+        description="Expand enums from a monolithic LinkML model"
     )
     parser.add_argument(
         "-log",
@@ -47,12 +179,32 @@ def exec(args: list[str] | None = None):
         default="INFO",
         help="Logging level tolerated (default is INFO)",
     )
+    parser.add_argument(
+        "-s",
+        "--source",
+        required=True,
+        type=Path,
+        help="The source file containing the enumerations to be expanded",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        required=False,
+        type=Path,
+        help="The directory where expanded output YAML files will be written",
+    )
+    parser.add_argument(
+        "-i",
+        "--iri",
+        required=False,
+        default=None,
+        help="Optional iri for the parent code to pull descendants.",
+    )
 
-    args = parser.parse_args(args)
+    args = parser.parse_args()
     # Initialize the logger with whatever the user requested
     init_logging(args.log_level)
 
-    logging.info(f"You have chose to use: {args}")
-    logging.warn(f"Hello")
-    logging.error("world")
-    logging.debug("Goodbye")
+    enums = expand(
+        local_filepath=args.source, output_filepath=args.output, iri=args.iri
+    )
