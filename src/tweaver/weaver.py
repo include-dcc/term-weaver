@@ -41,14 +41,15 @@ def init_logging(loglevel: str | None = None):
     )
 
 
-def parsed_csv(csv_text: str) -> dict:
+def parsed_csv(csv_text: str, endpoint: str) -> dict:
     """Parse dragon_search CSV output into permissible_values object for enum yaml file."""
     reader = csv.DictReader(io.StringIO(csv_text))
     permissible_values = {}
+    argument = "children" if endpoint == "-c" else "descendants"
     for row in reader:
         code = row["descendant_code"]
         if code.lower() == "no results":
-            print(f"No descendants found for {row['parent_code']}")
+            print(f"No {argument} found for {row['parent_code']}")
             continue
         permissible_values[code] = {
             "text": code,
@@ -82,12 +83,14 @@ def expand(
     output_filepath.mkdir(parents=True, exist_ok=True)
     enum_count = 0
     expanded_count = 0
+    enum_names = []
     for enum_file in local_filepath.glob("Enum*.yaml"):
         raw_enum = enum_file.read_text()
         parsed = yaml.safe_load(raw_enum)
 
         enums = parsed.get("enums", {})
         for name, enum in enums.items():
+            enum_names.append(name)
             expanded_enum = output_filepath / f"{name}.yaml"
 
             has_permissible = (
@@ -145,7 +148,7 @@ def expand(
                     logging.error(f"Failed for {name}: {result.stderr}")
                     node_failed = True
                 else:
-                    parsed_nodes = parsed_csv(expanded_enum.read_text())
+                    parsed_nodes = parsed_csv(expanded_enum.read_text(), endpoint)
                     all_permissible_values.update(parsed_nodes)
                     logging.info(f"Expanded enumeration: {name}")
 
@@ -165,6 +168,35 @@ def expand(
 
     if expanded_count != enum_count:
         logging.error(f"{enum_count - expanded_count} failed to be expanded.")
+    return enum_names
+
+
+def update_imports(enum_list: list[str], model_filepath: Path):
+    """
+    Writes the name of each enum to "imports" property in model file.
+
+    Opens file containing the master LinkML model and gets the data under the 'imports' key.
+    Appends the name of each extracted enumeration to any imports that may already exist, if it is not already there.
+    Writes the file with enum updates to the same filepath.
+    """
+    with model_filepath.open() as imports:
+        imports_parsed = yaml.safe_load(imports)
+
+    existing_imports = imports_parsed.get("imports", [])
+    updated_imports = existing_imports + [
+        n for n in enum_list if n not in existing_imports
+    ]
+    imports_parsed["imports"] = updated_imports
+
+    with model_filepath.open("w") as f:
+        yaml.dump(
+            imports_parsed,
+            f,
+            sort_keys=False,
+            Dumper=IndentedDumper,
+            indent=2,
+            default_flow_style=False,
+        )
 
 
 def exec(args: list[str] | None = None):
@@ -187,6 +219,13 @@ def exec(args: list[str] | None = None):
         help="The source file containing the enumerations to be expanded",
     )
     parser.add_argument(
+        "-m",
+        "--model",
+        required=False,
+        type=Path,
+        help="The path of the model YAML file",
+    )
+    parser.add_argument(
         "-o",
         "--output",
         required=False,
@@ -206,5 +245,9 @@ def exec(args: list[str] | None = None):
     init_logging(args.log_level)
 
     enums = expand(
-        local_filepath=args.source, output_filepath=args.output, iri=args.iri
+        local_filepath=args.source,
+        output_filepath=args.output,
+        iri=args.iri,
     )
+
+    update_imports(enum_list=enums, model_filepath=args.model)
