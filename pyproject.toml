@@ -29,7 +29,7 @@ dev = [
 ]
 
 [tool.setuptools_scm]
-version_file = "src/tweaver/_version.py"
+#version_file = "src/tweaver/_version.py"
 
 [tool.setuptools]
 include-package-data = true
