@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "term-weaver"
 description = "Enumeration Materialization"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
 ]
@@ -16,7 +16,9 @@ dependencies = [
     "linkml",
     "PyYAML",
     "jinja2",
-    "search-dragon@git+https://github.com/NIH-NCPI/search-dragon.git@yc/fd-3693"]
+    "search-dragon@git+https://github.com/NIH-NCPI/search-dragon.git"
+    ]
+
 dynamic = ["version"]
 
 [project.optional-dependencies]
@@ -27,7 +29,7 @@ dev = [
 ]
 
 [tool.setuptools_scm]
-version_file = "src/tweaver/_version.py"
+#version_file = "src/tweaver/_version.py"
 
 [tool.setuptools]
 include-package-data = true
