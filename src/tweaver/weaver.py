@@ -8,6 +8,8 @@ from pathlib import Path
 
 import yaml
 
+from tweaver.__init__ import __version__
+
 # Rich Logging if rich is installed
 if sys.stderr.isatty():
     from rich.console import Console
@@ -238,6 +240,13 @@ def exec(args: list[str] | None = None):
         required=False,
         default=None,
         help="Optional iri for the parent code to pull descendants.",
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"{__version__}",
+        help="Pulls the version from the __init__.py file",
     )
 
     args = parser.parse_args()
