@@ -28,7 +28,7 @@ The tool uses text substituion to modify the content of the "id", "name", "title
 The following conventions must be used for files to be findable by the script:
 - The source model YAML file must include `_source` in the title<br>
   - Example: enums_source_file
-- The enumeration files must start with `Enum` in the title<br>
+- The enumeration file names must start with `Enum`<br>
   - Example: EnumDataFile
 
 ## [LinkML properties](https://linkml.io/linkml-model/latest/docs/ReachabilityQuery/) currently supported
