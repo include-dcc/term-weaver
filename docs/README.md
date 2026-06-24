@@ -26,7 +26,7 @@ The file is written to the output filepath location and uses the path to create 
 The tool uses text substituion to modify the content of the "id", "name", "title", and "description" properties. All instances of the word `source` are replaced with `expanded` in these fields.
 
 The following convention must be used in the source model YAML file to be findable by the script:
-- The file must include `_source` in the title
+- The file must include `_source` in the title<br>
 &emsp;- Example: enums_source_file
 
 ## [LinkML properties](https://linkml.io/linkml-model/latest/docs/ReachabilityQuery/) currently supported
