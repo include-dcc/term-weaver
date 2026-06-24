@@ -18,8 +18,8 @@ This enables rich output which can be helpful.
 ## Model File Conventions
 The tool copies the source model YAML file to make the expanded model YAML file.
 The file is written to the output filepath location and uses the path to create the name.
-&emsp;Example:   
-&emsp;output = src/enums_expanded_file
+&emsp;Example:<br>
+&emsp;output = src/enums_expanded_file<br>
 &emsp;expanded model YAML = src/enums_expanded_file/enums_expanded_file.yaml
 
 The tool uses text substituion to modify the content of the "id", "name", "title", and "description" properties. All instances of the word `source` are replaced with `expanded` in these fields.
