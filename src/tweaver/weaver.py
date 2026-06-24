@@ -163,6 +163,7 @@ def expand(
                             default_flow_style=False,
                             sort_keys=False,
                             allow_unicode=True,
+                            explicit_start=True,
                         )
                     )
                     if not node_failed:
@@ -173,31 +174,39 @@ def expand(
     return enum_names
 
 
-def update_imports(enum_list: list[str], model_filepath: Path):
+def copy_model(local_filepath: Path, output_filepath: Path):
+    """Copies source model file to the same name and location as the output filepath.
+        Replaces "source" with "expanded" in the id, name, title, and description properties
+    Args:
+        local_filepath: The path containing the source model YAML file
+        output_filepath: The directory where the model YAML file is to be written and the name it will be assigned
     """
-    Writes the name of each enum to "imports" property in model file.
+    model_filepath = output_filepath / (f"{output_filepath.name}.yaml")
 
-    Opens file containing the master LinkML model and gets the data under the 'imports' key.
-    Appends the name of each extracted enumeration to any imports that may already exist, if it is not already there.
-    Writes the file with enum updates to the same filepath.
-    """
-    with model_filepath.open() as imports:
-        imports_parsed = yaml.safe_load(imports)
+    if model_filepath.exists():
+        return
+    else:
+        model_filepath.parent.mkdir(parents=True, exist_ok=True)
 
-    existing_imports = imports_parsed.get("imports", [])
-    updated_imports = existing_imports + [
-        n for n in enum_list if n not in existing_imports
-    ]
-    imports_parsed["imports"] = updated_imports
-
-    with model_filepath.open("w") as f:
-        yaml.dump(
-            imports_parsed,
-            f,
-            sort_keys=False,
-            Dumper=IndentedDumper,
-            indent=2,
-            default_flow_style=False,
+    for file in local_filepath.glob("*_source*.yaml"):
+        orig = file.read_text()
+        parsed = yaml.safe_load(orig)
+        for key in ["id", "name", "title", "description"]:
+            if parsed.get(key):
+                parsed[key] = (
+                    parsed[key]
+                    .replace("Source", "Expanded")
+                    .replace("source", "expanded")
+                )
+        model_filepath.write_text(
+            yaml.dump(
+                parsed,
+                sort_keys=False,
+                Dumper=IndentedDumper,
+                indent=2,
+                default_flow_style=False,
+                explicit_start=True,
+            )
         )
 
 
@@ -221,16 +230,9 @@ def exec(args: list[str] | None = None):
         help="The source file containing the enumerations to be expanded",
     )
     parser.add_argument(
-        "-m",
-        "--model",
-        required=False,
-        type=Path,
-        help="The path of the model YAML file",
-    )
-    parser.add_argument(
         "-o",
         "--output",
-        required=False,
+        required=True,
         type=Path,
         help="The directory where expanded output YAML files will be written",
     )
@@ -258,5 +260,4 @@ def exec(args: list[str] | None = None):
         output_filepath=args.output,
         iri=args.iri,
     )
-
-    update_imports(enum_list=enums, model_filepath=args.model)
+    copy_model(local_filepath=args.source, output_filepath=args.output)
