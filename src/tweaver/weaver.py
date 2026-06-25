@@ -2,6 +2,7 @@ import argparse
 import csv
 import io
 import logging
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -206,11 +207,22 @@ def copy_model(local_filepath: Path, model_name: str):
         )
 
 
+def restricted_chars(arg: str):
+    allowed_chars = re.search(r"^[\w-]+$", arg)
+    if not allowed_chars:
+        parser.error(
+            f"Invalid input '{arg}'. Model names can only contain alphanumeric characters, underscores, and dashes. See LinkML docs for more details: https://linkml.io/linkml/schemas/models.html#model-level-metadata-and-directives"
+        )
+    return arg
+
+
+parser = argparse.ArgumentParser(
+    description="Expand enums from a monolithic LinkML model"
+)
+
+
 def exec(args: list[str] | None = None):
 
-    parser = argparse.ArgumentParser(
-        description="Expand enums from a monolithic LinkML model"
-    )
     parser.add_argument(
         "-log",
         "--log-level",
@@ -226,10 +238,10 @@ def exec(args: list[str] | None = None):
         help="The source file containing the enumerations to be expanded",
     )
     parser.add_argument(
-        "-o",
-        "--output",
+        "-m",
+        "--model",
         required=True,
-        type=Path,
+        type=restricted_chars,
         help="The model name used to construct the output directory where the expanded YAML files will be written (src/{model_name}/schema) ",
     )
     parser.add_argument(
@@ -253,7 +265,7 @@ def exec(args: list[str] | None = None):
 
     enums = expand(
         local_filepath=args.source,
-        model_name=args.output,
+        model_name=args.model,
         iri=args.iri,
     )
-    copy_model(local_filepath=args.source, model_name=args.output)
+    copy_model(local_filepath=args.source, model_name=args.model)

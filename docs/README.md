@@ -13,7 +13,7 @@ pip install -e ".[dev]"
 This enables rich output which can be helpful.
 
 ## Running the script
-`tweaver -s {path/to/source/files} -o {model_name}`
+`tweaver -s {path/to/source/files} -m {model_name}`
 
 - The tool uses the model name to create the output filepath as `src/{model_name}/schema`
 
