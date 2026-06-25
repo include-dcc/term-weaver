@@ -68,20 +68,19 @@ class IndentedDumper(yaml.Dumper):
 
 def expand(
     local_filepath: Path | None = None,
-    output_filepath: Path | None = None,
+    model_name: str | None = None,
     iri: str | None = None,
 ):
     """Extract Enums from a monolithic LinkML model into individual YAML files
     Args:
         local_filepath: The file containing the monolithic linkml model
-        output_filepath: The directory where the enum YAMLs are to be written
+        model_name: The name of the model in the output directory where the enum YAMLs are to be written
         iri: Optional iri if a specific iri is desired other than the iri derived programattically
     Returns:
         list of enum names
     """
-    if output_filepath is None:
-        output_filepath = Path("output")
 
+    output_filepath = Path(f"src/{model_name}/schema")
     output_filepath.mkdir(parents=True, exist_ok=True)
     enum_count = 0
     expanded_count = 0
@@ -174,19 +173,15 @@ def expand(
     return enum_names
 
 
-def copy_model(local_filepath: Path, output_filepath: Path):
+def copy_model(local_filepath: Path, model_name: str):
     """Copies source model file to the same name and location as the output filepath.
         Replaces "source" with "expanded" in the id, name, title, and description properties
     Args:
         local_filepath: The path containing the source model YAML file
-        output_filepath: The directory where the model YAML file is to be written and the name it will be assigned
+        model_name: The name of the model for the expanded YAML file
     """
-    model_filepath = output_filepath / (f"{output_filepath.name}.yaml")
-
-    if model_filepath.exists():
-        return
-    else:
-        model_filepath.parent.mkdir(parents=True, exist_ok=True)
+    model_filepath = Path(f"src/{model_name}/schema")
+    model_filepath.mkdir(parents=True, exist_ok=True)
 
     for file in local_filepath.glob("*_source*.yaml"):
         orig = file.read_text()
@@ -198,7 +193,8 @@ def copy_model(local_filepath: Path, output_filepath: Path):
                     .replace("Source", "Expanded")
                     .replace("source", "expanded")
                 )
-        model_filepath.write_text(
+        yaml_file = model_filepath / f"{model_name}.yaml"
+        yaml_file.write_text(
             yaml.dump(
                 parsed,
                 sort_keys=False,
@@ -234,7 +230,7 @@ def exec(args: list[str] | None = None):
         "--output",
         required=True,
         type=Path,
-        help="The directory where expanded output YAML files will be written",
+        help="The model name used to construct the output directory where the expanded YAML files will be written (src/{model_name}/schema) ",
     )
     parser.add_argument(
         "-i",
@@ -257,7 +253,7 @@ def exec(args: list[str] | None = None):
 
     enums = expand(
         local_filepath=args.source,
-        output_filepath=args.output,
+        model_name=args.output,
         iri=args.iri,
     )
-    copy_model(local_filepath=args.source, output_filepath=args.output)
+    copy_model(local_filepath=args.source, model_name=args.output)

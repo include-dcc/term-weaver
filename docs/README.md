@@ -13,15 +13,18 @@ pip install -e ".[dev]"
 This enables rich output which can be helpful.
 
 ## Running the script
-`tweaver -s {path/to/source/files} -o {path/to/output/directory}`
+`tweaver -s {path/to/source/files} -o {model_name}`
 
-## Model File Conventions
+- The tool uses the model name to create the output filepath as `src/{model_name}/schema`
+
+
+## Model YAML File Conventions
 The tool copies the source model YAML file to make the expanded model YAML file.
 The file is written to the output filepath location and uses the path to create the name.
 
-&emsp;Example:<br>
-&emsp;output = src/enums_expanded_file<br>
-&emsp;expanded model YAML = src/enums_expanded_file/enums_expanded_file.yaml
+Example:<br>
+- output = src/enums_expanded_file<br>
+- expanded model YAML = src/enums_expanded_file/enums_expanded_file.yaml
 
 The tool uses text substituion to modify the content of the "id", "name", "title", and "description" properties. All instances of the word `source` are replaced with `expanded` in these fields.
 
