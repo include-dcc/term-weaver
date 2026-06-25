@@ -2,6 +2,7 @@ import argparse
 import csv
 import io
 import logging
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -68,20 +69,19 @@ class IndentedDumper(yaml.Dumper):
 
 def expand(
     local_filepath: Path | None = None,
-    output_filepath: Path | None = None,
+    model_name: str | None = None,
     iri: str | None = None,
 ):
     """Extract Enums from a monolithic LinkML model into individual YAML files
     Args:
         local_filepath: The file containing the monolithic linkml model
-        output_filepath: The directory where the enum YAMLs are to be written
+        model_name: The name of the model in the output directory where the enum YAMLs are to be written
         iri: Optional iri if a specific iri is desired other than the iri derived programattically
     Returns:
         list of enum names
     """
-    if output_filepath is None:
-        output_filepath = Path("output")
 
+    output_filepath = Path(f"src/{model_name}/schema")
     output_filepath.mkdir(parents=True, exist_ok=True)
     enum_count = 0
     expanded_count = 0
@@ -163,6 +163,7 @@ def expand(
                             default_flow_style=False,
                             sort_keys=False,
                             allow_unicode=True,
+                            explicit_start=True,
                         )
                     )
                     if not node_failed:
@@ -173,39 +174,55 @@ def expand(
     return enum_names
 
 
-def update_imports(enum_list: list[str], model_filepath: Path):
+def copy_model(local_filepath: Path, model_name: str):
+    """Copies source model file to the same name and location as the output filepath.
+        Replaces "source" with "expanded" in the id, name, title, and description properties
+    Args:
+        local_filepath: The path containing the source model YAML file
+        model_name: The name of the model for the expanded YAML file
     """
-    Writes the name of each enum to "imports" property in model file.
+    model_filepath = Path(f"src/{model_name}/schema")
+    model_filepath.mkdir(parents=True, exist_ok=True)
 
-    Opens file containing the master LinkML model and gets the data under the 'imports' key.
-    Appends the name of each extracted enumeration to any imports that may already exist, if it is not already there.
-    Writes the file with enum updates to the same filepath.
-    """
-    with model_filepath.open() as imports:
-        imports_parsed = yaml.safe_load(imports)
-
-    existing_imports = imports_parsed.get("imports", [])
-    updated_imports = existing_imports + [
-        n for n in enum_list if n not in existing_imports
-    ]
-    imports_parsed["imports"] = updated_imports
-
-    with model_filepath.open("w") as f:
-        yaml.dump(
-            imports_parsed,
-            f,
-            sort_keys=False,
-            Dumper=IndentedDumper,
-            indent=2,
-            default_flow_style=False,
+    for file in local_filepath.glob("*_source*.yaml"):
+        orig = file.read_text()
+        parsed = yaml.safe_load(orig)
+        for key in ["id", "name", "title", "description"]:
+            if parsed.get(key):
+                parsed[key] = (
+                    parsed[key]
+                    .replace("Source", "Expanded")
+                    .replace("source", "expanded")
+                )
+        yaml_file = model_filepath / f"{model_name}.yaml"
+        yaml_file.write_text(
+            yaml.dump(
+                parsed,
+                sort_keys=False,
+                Dumper=IndentedDumper,
+                indent=2,
+                default_flow_style=False,
+                explicit_start=True,
+            )
         )
+
+
+def restricted_chars(arg: str):
+    allowed_chars = re.search(r"^[\w-]+$", arg)
+    if not allowed_chars:
+        parser.error(
+            f"Invalid input '{arg}'. Model names can only contain alphanumeric characters, underscores, and dashes. See LinkML docs for more details: https://linkml.io/linkml/schemas/models.html#model-level-metadata-and-directives"
+        )
+    return arg
+
+
+parser = argparse.ArgumentParser(
+    description="Expand enums from a monolithic LinkML model"
+)
 
 
 def exec(args: list[str] | None = None):
 
-    parser = argparse.ArgumentParser(
-        description="Expand enums from a monolithic LinkML model"
-    )
     parser.add_argument(
         "-log",
         "--log-level",
@@ -223,16 +240,9 @@ def exec(args: list[str] | None = None):
     parser.add_argument(
         "-m",
         "--model",
-        required=False,
-        type=Path,
-        help="The path of the model YAML file",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        required=False,
-        type=Path,
-        help="The directory where expanded output YAML files will be written",
+        required=True,
+        type=restricted_chars,
+        help="The model name used to construct the output directory where the expanded YAML files will be written (src/{model_name}/schema) ",
     )
     parser.add_argument(
         "-i",
@@ -255,8 +265,7 @@ def exec(args: list[str] | None = None):
 
     enums = expand(
         local_filepath=args.source,
-        output_filepath=args.output,
+        model_name=args.model,
         iri=args.iri,
     )
-
-    update_imports(enum_list=enums, model_filepath=args.model)
+    copy_model(local_filepath=args.source, model_name=args.model)
