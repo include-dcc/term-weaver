@@ -39,7 +39,7 @@ The ontology prefixes used in the expanded enumeration files are consistent with
 - snomedct:
     - OLS is used to materialize enumerations and returns the prefix as "SNOMED"
     - The "SNOMED" value is replaced by the standard "snomedct"
-- Other prefixes default to using the case sensitive prefix provided in the file's `source_nodes`
+- Other prefixes default to using the casing of the prefix provided in the file's `source_nodes`
 
 ## [LinkML properties](https://linkml.io/linkml-model/latest/docs/ReachabilityQuery/) currently supported
 - source_ontology 
