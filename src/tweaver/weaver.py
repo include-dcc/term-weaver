@@ -44,16 +44,24 @@ def init_logging(loglevel: str | None = None):
     )
 
 
-def parsed_csv(csv_text: str, endpoint: str) -> dict:
+prefix_dict = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
+
+
+def parsed_csv(csv_text: str, endpoint: str, source_nodes: list) -> dict:
     """Parse dragon_search CSV output into permissible_values object for enum yaml file."""
     reader = csv.DictReader(io.StringIO(csv_text))
     permissible_values = {}
     argument = "children" if endpoint == "-c" else "descendants"
     for row in reader:
         code = row["descendant_code"]
+        for key, value in prefix_dict.items():
+            code = code.replace(key, value)
         if code.lower() == "no results":
             print(f"No {argument} found for {row['parent_code']}")
             continue
+        for node in source_nodes:
+            if code.split(":")[0].upper() == node.split(":")[0].upper():
+                code = code.replace(code.split(":")[0], node.split(":")[0])
         permissible_values[code] = {
             "text": code,
             "description": row.get("description", ""),
@@ -150,7 +158,9 @@ def expand(
                     logging.error(f"Failed for {name}: {result.stderr}")
                     node_failed = True
                 else:
-                    parsed_nodes = parsed_csv(expanded_enum.read_text(), endpoint)
+                    parsed_nodes = parsed_csv(
+                        expanded_enum.read_text(), endpoint, has_nodes
+                    )
                     all_permissible_values.update(parsed_nodes)
                     logging.info(f"Expanded enumeration: {name}")
 
