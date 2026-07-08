@@ -63,10 +63,12 @@ def parsed_csv(csv_text: str, endpoint: str, source_nodes: list) -> dict:
             if code.split(":")[0].upper() == node.split(":")[0].upper():
                 code = code.replace(code.split(":")[0], node.split(":")[0])
         permissible_values[code] = {
-            "text": code,
-            "description": row.get("description", ""),
             "title": row.get("display", ""),
+            "description": row.get("description"),
+            "meaning": code,
         }
+        if not permissible_values[code]["description"]:
+            del permissible_values[code]["description"]
     return permissible_values
 
 
