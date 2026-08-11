@@ -42,3 +42,4 @@ where = ["src"]  # list of folders that contain the packages (["."] by default)
 
 [project.scripts]
 tweaver = "tweaver.weaver:exec"
+mini = "tweaver.mini:exec"

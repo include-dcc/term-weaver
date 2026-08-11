@@ -83,31 +83,49 @@ class IndentedDumper(yaml.Dumper):
 
 def expand(
     local_filepath: Path | None = None,
-    model_name: str | None = None,
     iri: str | None = None,
 ):
     """Extract Enums from a monolithic LinkML model into individual YAML files
     Args:
         local_filepath: The file containing the monolithic linkml model
-        model_name: The name of the model in the output directory where the enum YAMLs are to be written
         iri: Optional iri if a specific iri is desired other than the iri derived programattically
     Returns:
         list of enum names
     """
 
-    output_filepath = Path(f"src/{model_name}/schema")
-    output_filepath.mkdir(parents=True, exist_ok=True)
+    model_filename = local_filepath.parent.name + ".yaml"
+    model_file = local_filepath / model_filename
+
     enum_count = 0
     expanded_count = 0
     enum_names = []
-    for enum_file in local_filepath.glob("Enum*.yaml"):
+
+    if not model_file.exists():
+        logger.error(f"{model_file} not found.")
+        return enum_names
+
+    model_parsed = yaml.safe_load(model_file.read_text())
+    imports = model_parsed.get("imports", [])
+
+    for imp in imports:
+        if not imp.split("/")[-1].startswith("Enum"):
+            continue
+        matches = list(local_filepath.rglob(f"{imp}.yaml"))
+        if not matches:
+            logger.warning(f"{imp} file not found.")
+            continue
+
+        enum_file = matches[0]
+        if not enum_file.exists():
+            logger.warning(f"{enum_file} not found.")
+            continue
         raw_enum = enum_file.read_text()
         parsed = yaml.safe_load(raw_enum)
 
         enums = parsed.get("enums", {})
         for name, enum in enums.items():
             enum_names.append(name)
-            expanded_enum = output_filepath / f"{name}.yaml"
+            expanded_enum = enum_file
 
             has_permissible = (
                 "permissible_values" in (enum) and enum["permissible_values"]
@@ -121,8 +139,7 @@ def expand(
             endpoint = "-c" if has_direct else "-d"
 
             if has_permissible or not has_ontology:
-                expanded_enum.write_text(raw_enum)
-                logger.info(f"Copied {name} (does not require expansion)")
+                logger.info(f"Skipping {name}. Does not require expansion")
                 enum_count += 1
                 expanded_count += 1
                 continue
@@ -161,6 +178,7 @@ def expand(
                     logger.error(f"Failed for {name}: {result.stdout}")
                     logger.error(f"Failed for {name}: {result.stderr}")
                     node_failed = True
+                    logger.info(f"dragon_search exit code: {result.returncode}")
                 else:
                     parsed_nodes = parsed_csv(
                         expanded_enum.read_text(), endpoint, has_nodes
@@ -184,41 +202,8 @@ def expand(
                         expanded_count += 1
 
     if expanded_count != enum_count:
-        logger.error(f"{enum_count - expanded_count} failed to be expanded.")
+        logger.warning(f"{enum_count - expanded_count} failed to be expanded.")
     return enum_names
-
-
-def copy_model(local_filepath: Path, model_name: str):
-    """Copies source model file to the same name and location as the output filepath.
-        Replaces "source" with "expanded" in the id, name, title, and description properties
-    Args:
-        local_filepath: The path containing the source model YAML file
-        model_name: The name of the model for the expanded YAML file
-    """
-    model_filepath = Path(f"src/{model_name}/schema")
-    model_filepath.mkdir(parents=True, exist_ok=True)
-
-    for file in local_filepath.glob("*_source*.yaml"):
-        orig = file.read_text()
-        parsed = yaml.safe_load(orig)
-        for key in ["id", "name", "title", "description"]:
-            if parsed.get(key):
-                parsed[key] = (
-                    parsed[key]
-                    .replace("Source", "Expanded")
-                    .replace("source", "expanded")
-                )
-        yaml_file = model_filepath / f"{model_name}.yaml"
-        yaml_file.write_text(
-            yaml.dump(
-                parsed,
-                sort_keys=False,
-                Dumper=IndentedDumper,
-                indent=2,
-                default_flow_style=False,
-                explicit_start=True,
-            )
-        )
 
 
 def restricted_chars(arg: str):
@@ -251,13 +236,7 @@ def exec(cli_args: list[str] | None = None):
         type=Path,
         help="The source file containing the enumerations to be expanded",
     )
-    parser.add_argument(
-        "-m",
-        "--model",
-        required=True,
-        type=restricted_chars,
-        help="The model name used to construct the output directory where the expanded YAML files will be written (src/{model_name}/schema) ",
-    )
+
     parser.add_argument(
         "-i",
         "--iri",
@@ -279,8 +258,7 @@ def exec(cli_args: list[str] | None = None):
 
     expand(
         local_filepath=args.source,
-        model_name=args.model,
         iri=args.iri,
     )
-    copy_model(local_filepath=args.source, model_name=args.model)
+    logger.info("Script completed successfully")
     return args
