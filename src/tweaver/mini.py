@@ -110,11 +110,11 @@ def expand(
     for imp in imports:
         if not imp.split("/")[-1].startswith("Enum"):
             continue
-        matches = list(local_filepath.rglob(f"{imp}.yaml"))
+        filename = imp.split("/")[-1]
+        matches = list(local_filepath.resolve().glob(f"**/{filename}.yaml"))
         if not matches:
             logger.warning(f"{imp} file not found.")
             continue
-
         enum_file = matches[0]
         if not enum_file.exists():
             logger.warning(f"{enum_file} not found.")

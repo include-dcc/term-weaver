@@ -135,7 +135,10 @@ def expand(
 
             all_permissible_values = {}
             node_failed = False
+
             for node in has_nodes:
+                print(f"node before cmd: '{node}'")
+
                 cmd = [
                     "dragon_search",
                     "-ak",
@@ -143,18 +146,26 @@ def expand(
                     "-o",
                     str(ontology),
                     "-f",
-                    str(expanded_enum),
+                    str(expanded_enum.absolute()),
                     str(endpoint),
                     "-s",
                     "0",
                 ]
+                print(f"cmd: {cmd}")
                 if has_reachable.get("include_self"):
                     cmd.append("-p")
                 if iri:
                     cmd.extend(["-i", str(iri)])
 
                 result = subprocess.run(
+<<<<<<< Updated upstream
                     cmd, capture_output=True, text=True, check=False
+=======
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+>>>>>>> Stashed changes
                 )
                 enum_count += 1
                 if result.returncode != 0:
@@ -165,6 +176,7 @@ def expand(
                     parsed_nodes = parsed_csv(
                         expanded_enum.read_text(), endpoint, has_nodes
                     )
+                    print(f"CSV content being parsed:\n{expanded_enum.read_text()}")
                     all_permissible_values.update(parsed_nodes)
                     logger.info(f"Expanded enumeration: {name}")
 
