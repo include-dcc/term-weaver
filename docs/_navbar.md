@@ -1,2 +1,3 @@
-* [Term Weaver](README.md)
-  * [Design](DESIGN.md)
+- [Term Weaver](README.md)
+  - [Allowable Prefixes](notes/allowable_prefix.md)
+  - [Design](DESIGN.md)
