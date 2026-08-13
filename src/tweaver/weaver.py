@@ -100,6 +100,8 @@ def expand(
         raw_enum = enum_file.read_text()
         parsed = yaml.safe_load(raw_enum)
 
+        print(enum_file)
+
         enums = parsed.get("enums", {})
         for name, enum in enums.items():
             enum_names.append(name)
@@ -133,6 +135,8 @@ def expand(
             node_failed = False
             for node in has_nodes:
                 cmd = [
+                    "uv",
+                    "run",
                     "dragon_search",
                     "-ak",
                     str(node),
