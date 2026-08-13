@@ -82,7 +82,7 @@ class IndentedDumper(yaml.Dumper):
 
 
 def expand(
-    local_filepath: Path | None = None,
+    local_filepath: Path,
     iri: str | None = None,
 ):
     """Extract Enums from a monolithic LinkML model into individual YAML files
@@ -152,6 +152,22 @@ def expand(
 
             all_permissible_values = {}
             node_failed = False
+            minus = has_reachable.get("minus", [])
+            minus_codes = set()
+            if isinstance(minus, dict):
+                minus_codes.update(minus.get("permissible_values", []))
+            else:
+                for minus_item in minus:
+                    if isinstance(minus_item, str):
+                        minus_codes.add(minus_item)
+                        continue
+                    if "permissible_values" in minus_item:
+                        minus_codes.update(minus_item["permissible_values"])
+                        continue
+                    minus_reachable = minus_item.get("reachable_from", {})
+                    minus_nodes = minus_reachable.get("source_nodes", [])
+                    minus_codes.update(minus_nodes)
+
             for node in has_nodes:
                 cmd = [
                     "dragon_search",
@@ -184,7 +200,14 @@ def expand(
                         expanded_enum.read_text(), endpoint, has_nodes
                     )
                     all_permissible_values.update(parsed_nodes)
+                    all_permissible_values = {
+                        k: v
+                        for k, v in all_permissible_values.items()
+                        if k not in minus_codes
+                    }
                     logger.info(f"Expanded enumeration: {name}")
+                    if minus_codes:
+                        logger.info(f"Excluding {minus_codes}")
 
                 if all_permissible_values:
                     parsed["enums"][name]["permissible_values"] = all_permissible_values
@@ -215,6 +238,26 @@ def restricted_chars(arg: str):
     return arg
 
 
+def clear_permissible_values(filepath: Path):
+    """Remove the permissible_values block from an enum YAML file."""
+    parsed = yaml.safe_load(filepath.read_text())
+    enums = parsed.get("enums", {})
+    for name in enums:
+        if "permissible_values" in enums[name]:
+            del enums[name]["permissible_values"]
+    filepath.write_text(
+        yaml.dump(
+            parsed,
+            Dumper=IndentedDumper,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+            explicit_start=True,
+        )
+    )
+    logger.info(f"Cleared permissible_values from {filepath}")
+
+
 parser = argparse.ArgumentParser(
     description="Expand enums from a monolithic LinkML model"
 )
@@ -232,7 +275,7 @@ def exec(cli_args: list[str] | None = None):
     parser.add_argument(
         "-s",
         "--source",
-        required=True,
+        required=False,
         type=Path,
         help="The source file containing the enumerations to be expanded",
     )
@@ -251,11 +294,23 @@ def exec(cli_args: list[str] | None = None):
         version=f"{__version__}",
         help="Pulls the version from the __init__.py file",
     )
+    parser.add_argument(
+        "--clear",
+        required=False,
+        type=Path,
+        help="Clears permissible_values property from a speficied enum YAML file.",
+    )
 
     args = parser.parse_args(cli_args)
     # Initialize the logger with whatever the user requested
     init_logging(args.log_level)
 
+    if args.clear:
+        clear_permissible_values(args.clear)
+        return
+
+    if not args.source:
+        parser.error("-s/--source is required when not using --clear")
     expand(
         local_filepath=args.source,
         iri=args.iri,

@@ -64,7 +64,11 @@ def parsed_csv(csv_text: str, endpoint: str, source_nodes: list) -> dict:
             print(f"No {argument} found for {row['parent_code']}")
             continue
         for node in source_nodes:
-            if code.split(":")[0].upper() == node.split(":")[0].upper():
+            split_code = code.split(":")[0].upper()
+            split_node = node.split(":")[0].upper()
+            if split_code != split_node:
+                logger.warning(f"{code} prefix does not match the source node: {node}")
+            if split_code == split_node:
                 code = code.replace(code.split(":")[0], node.split(":")[0])
         permissible_values[code] = {
             "title": row.get("display", ""),
@@ -82,7 +86,7 @@ class IndentedDumper(yaml.Dumper):
 
 
 def expand(
-    local_filepath: Path | None = None,
+    local_filepath: Path,
     model_name: str | None = None,
     iri: str | None = None,
 ):
@@ -158,14 +162,7 @@ def expand(
                     cmd.extend(["-i", str(iri)])
 
                 result = subprocess.run(
-<<<<<<< Updated upstream
                     cmd, capture_output=True, text=True, check=False
-=======
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    check=False,
->>>>>>> Stashed changes
                 )
                 enum_count += 1
                 if result.returncode != 0:
