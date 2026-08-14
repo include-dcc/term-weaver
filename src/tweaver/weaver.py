@@ -141,8 +141,6 @@ def expand(
             node_failed = False
 
             for node in has_nodes:
-                print(f"node before cmd: '{node}'")
-
                 cmd = [
                     "dragon_search",
                     "-ak",
@@ -155,7 +153,6 @@ def expand(
                     "-s",
                     "0",
                 ]
-                print(f"cmd: {cmd}")
                 if has_reachable.get("include_self"):
                     cmd.append("-p")
                 if iri:
@@ -173,7 +170,6 @@ def expand(
                     parsed_nodes = parsed_csv(
                         expanded_enum.read_text(), endpoint, has_nodes
                     )
-                    print(f"CSV content being parsed:\n{expanded_enum.read_text()}")
                     all_permissible_values.update(parsed_nodes)
                     logger.info(f"Expanded enumeration: {name}")
 
