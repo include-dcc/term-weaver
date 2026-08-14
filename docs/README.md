@@ -13,10 +13,15 @@ pip install -e ".[dev]"
 This enables rich output which can be helpful.
 
 ## Running the script
-#### To write the expanded output inline:
+### To write the expanded output inline:
 `mini -s {path/to/source/files}`
 
-#### To write the expanded output to a new filepath:
+#### Rexpansion
+To rerun the expansion script on a file, remove the `permissible_values` field from the YAML file. This can either be done by deleting it manually or running the following script for each file:
+
+`mini --clear {path/to/file}`
+
+### To write the expanded output to a new filepath:
 `tweaver -s {path/to/source/files} -m {model_name}`
 
 - The tool uses the model name to create the output filepath as `src/{model_name}/schema`
