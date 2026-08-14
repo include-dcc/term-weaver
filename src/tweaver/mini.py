@@ -85,7 +85,7 @@ class IndentedDumper(yaml.Dumper):
         return super().increase_indent(flow=flow, indentless=False)
 
 
-def expand(
+def expand_mini(
     local_filepath: Path,
     iri: str | None = None,
 ):
@@ -243,7 +243,10 @@ def restricted_chars(arg: str):
 
 
 def clear_permissible_values(filepath: Path):
-    """Remove the permissible_values block from an enum YAML file."""
+    """Remove the permissible_values block from an enum YAML file.
+    Args:
+        filepath: The filepath to the file to remove permissible_values
+    """
     parsed = yaml.safe_load(filepath.read_text())
     enums = parsed.get("enums", {})
     for name in enums:
@@ -315,7 +318,7 @@ def exec(cli_args: list[str] | None = None):
 
     if not args.source:
         parser.error("-s/--source is required when not using --clear")
-    expand(
+    expand_mini(
         local_filepath=args.source,
         iri=args.iri,
     )
