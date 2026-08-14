@@ -16,7 +16,7 @@ This enables rich output which can be helpful.
 ### To write the expanded output inline:
 `mini -s {path/to/source/files}`
 
-#### Rexpansion
+#### Re-expansion
 To rerun the expansion script on a file, remove the `permissible_values` field from the YAML file. This can either be done by deleting it manually or running the following script for each file:
 
 `mini --clear {path/to/file}`
