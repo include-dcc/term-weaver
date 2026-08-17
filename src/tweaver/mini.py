@@ -4,48 +4,15 @@ import io
 import logging
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 import yaml
-from rich.console import Console
-from rich.logging import RichHandler
-from rich.traceback import install
+from car_utils import setup_logging
 
 from tweaver.__init__ import __version__
 
 logger = logging.getLogger(__name__)
 # Rich Logging if rich is installed
-if sys.stderr.isatty():
-    from rich.console import Console
-    from rich.logging import RichHandler
-    from rich.traceback import install
-
-
-def init_logging(loglevel: str | None = None):
-    # When we are in the terminal, let's use the rich logging
-    if loglevel is None:
-        loglevel = "WARN"
-    DATEFMT = "%Y-%m-%dT%H:%M:%SZ"
-    if sys.stderr.isatty():
-        install(show_locals=True)
-
-        handler = RichHandler(
-            level=loglevel,
-            console=Console(stderr=True),
-            show_time=False,
-            show_level=True,
-            markup=True,
-            rich_tracebacks=True,
-        )
-        FORMAT = "%(message)s"
-    else:
-        FORMAT = "%(asctime)s\t%(levelname)s\t%(message)s"
-        handler = logging.StreamHandler()
-
-    logging.basicConfig(
-        level=loglevel, format=FORMAT, datefmt=DATEFMT, handlers=[handler]
-    )
 
 
 prefix_dict = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
@@ -85,6 +52,94 @@ class IndentedDumper(yaml.Dumper):
         return super().increase_indent(flow=flow, indentless=False)
 
 
+def _resolve_enum_imports(imports: list, local_filepath: Path) -> list[Path]:
+    """Resolve enum imports list to file path."""
+    resolved = []
+    for imp in imports:
+        if not imp.split("/")[-1].startswith("Enum"):
+            continue
+        filename = imp.split("/")[-1]
+        matches = list(local_filepath.resolve().glob(f"**/{filename}.yaml"))
+        if not matches:
+            logger.warning(f"{imp} file not found.")
+            continue
+        resolved.append(matches[0])
+    return resolved
+
+
+def _compute_minus_codes(reachable: dict) -> set:
+    """Compute the set of codes to exclude from permissible_values."""
+    minus = reachable.get("minus", [])
+    minus_codes = set()
+    if isinstance(minus, dict):
+        minus_codes.update(minus.get("permissible_values", []))
+    else:
+        for minus_item in minus:
+            if isinstance(minus_item, str):
+                minus_codes.add(minus_item)
+                continue
+            if "permissible_values" in minus_item:
+                minus_codes.update(minus_item["permissible_values"])
+                continue
+            minus_reachable = minus_item.get("reachable_from", {})
+            minus_nodes = minus_reachable.get("source_nodes", [])
+            minus_codes.update(minus_nodes)
+    return minus_codes
+
+
+def _expand_enum_for_node(
+    node: str,
+    ontology: str,
+    expanded_enum: Path,
+    endpoint: str,
+    reachable: dict,
+    has_nodes: list,
+    iri: str | None,
+):
+    """Run dragon_search for a single node and return parsed permissible values"""
+    cmd = [
+        "dragon_search",
+        "-ak",
+        str(node),
+        "-o",
+        str(ontology),
+        "-f",
+        str(expanded_enum),
+        str(endpoint),
+        "-s",
+        "0",
+    ]
+    if reachable.get("include_self"):
+        cmd.append("-p")
+    if iri:
+        cmd.extend(["-i", str(iri)])
+
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        logger.error(f"Failed for {node}: {result.stdout}")
+        logger.error(f"Failed for {node}: {result.stderr}")
+        return {}, True
+    parsed_nodes = parsed_csv(expanded_enum.read_text(), endpoint, has_nodes)
+    return parsed_nodes, False
+
+
+def _write_expanded_enum(
+    expanded_enum: Path, parsed: dict, name: str, permissible_values: dict
+):
+    """Write the expanded enum YAML file with permissible_values."""
+    parsed["enums"][name]["permissible_values"] = permissible_values
+    expanded_enum.write_text(
+        yaml.dump(
+            parsed,
+            Dumper=IndentedDumper,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+            explicit_start=True,
+        )
+    )
+
+
 def expand_mini(
     local_filepath: Path,
     iri: str | None = None,
@@ -110,123 +165,59 @@ def expand_mini(
 
     model_parsed = yaml.safe_load(model_file.read_text())
     imports = model_parsed.get("imports", [])
+    enum_files = _resolve_enum_imports(imports, local_filepath)
 
-    for imp in imports:
-        if not imp.split("/")[-1].startswith("Enum"):
-            continue
-        filename = imp.split("/")[-1]
-        matches = list(local_filepath.resolve().glob(f"**/{filename}.yaml"))
-        if not matches:
-            logger.warning(f"{imp} file not found.")
-            continue
-        enum_file = matches[0]
-        if not enum_file.exists():
-            logger.warning(f"{enum_file} not found.")
-            continue
+    for enum_file in enum_files:
         raw_enum = enum_file.read_text()
         parsed = yaml.safe_load(raw_enum)
-
         enums = parsed.get("enums", {})
+
         for name, enum in enums.items():
             enum_names.append(name)
-            expanded_enum = enum_file
-
             has_permissible = (
-                "permissible_values" in (enum) and enum["permissible_values"]
+                "permissible_values" in enum and enum["permissible_values"]
             )
-
             has_reachable = enum.get("reachable_from") or {}
             has_ontology = has_reachable.get("source_ontology")
             has_nodes = has_reachable.get("source_nodes")
             has_direct = has_reachable.get("is_direct")
-
             endpoint = "-c" if has_direct else "-d"
 
             if has_permissible or not has_ontology:
-                logger.info(f"Skipping {name}. Does not require expansion")
+                logger.info(f"Skipping {name}. Does not require expansion.")
                 enum_count += 1
                 expanded_count += 1
                 continue
 
-            if not has_ontology:
-                continue
             ontology = has_ontology.split(":")[1]
-            if not has_nodes:
-                continue
-
+            minus_codes = _compute_minus_codes(has_reachable)
             all_permissible_values = {}
             node_failed = False
-            minus = has_reachable.get("minus", [])
-            minus_codes = set()
-            if isinstance(minus, dict):
-                minus_codes.update(minus.get("permissible_values", []))
-            else:
-                for minus_item in minus:
-                    if isinstance(minus_item, str):
-                        minus_codes.add(minus_item)
-                        continue
-                    if "permissible_values" in minus_item:
-                        minus_codes.update(minus_item["permissible_values"])
-                        continue
-                    minus_reachable = minus_item.get("reachable_from", {})
-                    minus_nodes = minus_reachable.get("source_nodes", [])
-                    minus_codes.update(minus_nodes)
-
+            if not has_nodes:
+                continue
             for node in has_nodes:
-                cmd = [
-                    "dragon_search",
-                    "-ak",
-                    str(node),
-                    "-o",
-                    str(ontology),
-                    "-f",
-                    str(expanded_enum),
-                    str(endpoint),
-                    "-s",
-                    "0",
-                ]
-                if has_reachable.get("include_self"):
-                    cmd.append("-p")
-                if iri:
-                    cmd.extend(["-i", str(iri)])
-
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, check=False
+                node_values, failed = _expand_enum_for_node(
+                    node, ontology, enum_file, endpoint, has_reachable, has_nodes, iri
                 )
-                enum_count += 1
-                if result.returncode != 0:
-                    logger.error(f"Failed for {name}: {result.stdout}")
-                    logger.error(f"Failed for {name}: {result.stderr}")
+                if failed:
                     node_failed = True
-                    logger.info(f"dragon_search exit code: {result.returncode}")
                 else:
-                    parsed_nodes = parsed_csv(
-                        expanded_enum.read_text(), endpoint, has_nodes
-                    )
-                    all_permissible_values.update(parsed_nodes)
-                    all_permissible_values = {
-                        k: v
-                        for k, v in all_permissible_values.items()
-                        if k not in minus_codes
-                    }
+                    all_permissible_values.update(node_values)
                     logger.info(f"Expanded enumeration: {name}")
-                    if minus_codes:
-                        logger.info(f"Excluding {minus_codes}")
 
-                if all_permissible_values:
-                    parsed["enums"][name]["permissible_values"] = all_permissible_values
-                    expanded_enum.write_text(
-                        yaml.dump(
-                            parsed,
-                            Dumper=IndentedDumper,
-                            default_flow_style=False,
-                            sort_keys=False,
-                            allow_unicode=True,
-                            explicit_start=True,
-                        )
-                    )
-                    if not node_failed:
-                        expanded_count += 1
+            if minus_codes:
+                logger.info(f"Exclusing {minus_codes}")
+                all_permissible_values = {
+                    k: v
+                    for k, v in all_permissible_values.items()
+                    if k not in minus_codes
+                }
+
+            if all_permissible_values:
+                _write_expanded_enum(enum_file, parsed, name, all_permissible_values)
+                if not node_failed:
+                    expanded_count += 1
+            enum_count += 1
 
     if expanded_count != enum_count:
         logger.warning(f"{enum_count - expanded_count} failed to be expanded.")
@@ -310,8 +301,7 @@ def exec(cli_args: list[str] | None = None):
 
     args = parser.parse_args(cli_args)
     # Initialize the logger with whatever the user requested
-    init_logging(args.log_level)
-
+    setup_logging(level=args.log_level)
     if args.clear:
         clear_permissible_values(args.clear)
         return
