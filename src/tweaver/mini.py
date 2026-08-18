@@ -67,6 +67,18 @@ def _resolve_enum_imports(imports: list, local_filepath: Path) -> list[Path]:
     return resolved
 
 
+def _parse_reachable(reachable: dict) -> dict:
+    """Parse reachable_from block."""
+    source_ontology = reachable.get("source_ontology")
+    return {
+        "ontology": source_ontology.split(":")[1] if source_ontology else None,
+        "nodes": reachable.get("source_nodes"),
+        "is_direct": reachable.get("is_direct"),
+        "include_self": reachable.get("include_self"),
+        "minus": reachable.get("minus"),
+    }
+
+
 def _compute_minus_codes(reachable: dict) -> set:
     """Compute the set of codes to exclude from permissible_values."""
     minus = reachable.get("minus", [])
@@ -81,9 +93,8 @@ def _compute_minus_codes(reachable: dict) -> set:
             if "permissible_values" in minus_item:
                 minus_codes.update(minus_item["permissible_values"])
                 continue
-            minus_reachable = minus_item.get("reachable_from", {})
-            minus_nodes = minus_reachable.get("source_nodes", [])
-            minus_codes.update(minus_nodes)
+            parsed = _parse_reachable(minus_item.get("reachable_from", {}))
+            minus_codes.update(parsed["nodes"] or [])
     return minus_codes
 
 
@@ -155,10 +166,8 @@ def expand_mini(
     model_filename = local_filepath.parent.name + ".yaml"
     model_file = local_filepath / model_filename
 
-    enum_count = 0
     expanded_count = 0
     enum_names = []
-
     if not model_file.exists():
         logger.error(f"{model_file} not found.")
         return enum_names
@@ -174,30 +183,33 @@ def expand_mini(
 
         for name, enum in enums.items():
             enum_names.append(name)
+            reachable = _parse_reachable(enum.get("reachable_from") or {})
+            endpoint = "-c" if reachable["is_direct"] else "-d"
             has_permissible = (
                 "permissible_values" in enum and enum["permissible_values"]
             )
-            has_reachable = enum.get("reachable_from") or {}
-            has_ontology = has_reachable.get("source_ontology")
-            has_nodes = has_reachable.get("source_nodes")
-            has_direct = has_reachable.get("is_direct")
-            endpoint = "-c" if has_direct else "-d"
 
-            if has_permissible or not has_ontology:
+            if has_permissible or not reachable["ontology"]:
                 logger.info(f"Skipping {name}. Does not require expansion.")
-                enum_count += 1
                 expanded_count += 1
                 continue
 
-            ontology = has_ontology.split(":")[1]
-            minus_codes = _compute_minus_codes(has_reachable)
+            if not reachable["nodes"]:
+                continue
+
+            minus_codes = _compute_minus_codes(enum.get("reachable_from") or {})
             all_permissible_values = {}
             node_failed = False
-            if not has_nodes:
-                continue
-            for node in has_nodes:
+
+            for node in reachable["nodes"]:
                 node_values, failed = _expand_enum_for_node(
-                    node, ontology, enum_file, endpoint, has_reachable, has_nodes, iri
+                    node,
+                    reachable["ontology"],
+                    enum_file,
+                    endpoint,
+                    reachable,
+                    reachable["nodes"],
+                    iri,
                 )
                 if failed:
                     node_failed = True
@@ -206,7 +218,7 @@ def expand_mini(
                     logger.info(f"Expanded enumeration: {name}")
 
             if minus_codes:
-                logger.info(f"Exclusing {minus_codes}")
+                logger.info(f"Excluding {minus_codes}")
                 all_permissible_values = {
                     k: v
                     for k, v in all_permissible_values.items()
@@ -217,8 +229,8 @@ def expand_mini(
                 _write_expanded_enum(enum_file, parsed, name, all_permissible_values)
                 if not node_failed:
                     expanded_count += 1
-            enum_count += 1
 
+    enum_count = len(enum_names)
     if expanded_count != enum_count:
         logger.warning(f"{enum_count - expanded_count} failed to be expanded.")
     return enum_names
