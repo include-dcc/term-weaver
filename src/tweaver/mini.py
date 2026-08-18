@@ -189,7 +189,11 @@ def expand_mini(
                 "permissible_values" in enum and enum["permissible_values"]
             )
 
-            if has_permissible or not reachable["ontology"]:
+            if (
+                has_permissible
+                or not reachable["ontology"]
+                or ".owl" in reachable["ontology"]
+            ):
                 logger.info(f"Skipping {name}. Does not require expansion.")
                 expanded_count += 1
                 continue
@@ -325,4 +329,4 @@ def exec(cli_args: list[str] | None = None):
         iri=args.iri,
     )
     logger.info("Script completed successfully")
-    return args
+    return
