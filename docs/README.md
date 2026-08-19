@@ -14,12 +14,20 @@ This enables rich output which can be helpful.
 
 ## Running the script
 ### To write the expanded output inline:
-`mini -s {path/to/source/files}`
+`mini -s {path/to/source/directory}`
+
+Example:
+
+`mini -s src/cam_source_enums/schema/`
 
 #### Re-expansion
 To rerun the expansion script on a file, remove the `permissible_values` field from the YAML file. This can either be done by deleting it manually or running the following script for each file:
 
 `mini --clear {path/to/file}`
+
+Example:
+
+`mini --clear src/cam_source_enums/schema/EnumName.yaml`
 
 ### To write the expanded output to a new filepath:
 `tweaver -s {path/to/source/files} -m {model_name}`
