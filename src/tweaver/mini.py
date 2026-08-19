@@ -71,7 +71,9 @@ def _parse_reachable(reachable: dict) -> dict:
     """Parse reachable_from block."""
     source_ontology = reachable.get("source_ontology")
     return {
-        "ontology": source_ontology.split(":")[1] if source_ontology else None,
+        "ontology": source_ontology.split(":")[1]
+        if source_ontology and ":" in source_ontology
+        else None,
         "nodes": reachable.get("source_nodes"),
         "is_direct": reachable.get("is_direct"),
         "include_self": reachable.get("include_self"),
@@ -254,11 +256,23 @@ def clear_permissible_values(filepath: Path):
     Args:
         filepath: The filepath to the file to remove permissible_values
     """
+    if not filepath.exists():
+        logger.error(f"{filepath} not found.")
+        return
     parsed = yaml.safe_load(filepath.read_text())
     enums = parsed.get("enums", {})
     for name in enums:
-        if "permissible_values" in enums[name]:
+        if "permissible_values" in enums[name] and "reachable_from" in enums[name]:
             del enums[name]["permissible_values"]
+            logger.info(f"Cleared permissible_values from {name}")
+        elif "permissible_values" not in enums[name]:
+            logger.warning(
+                f"Cannot delete permissible_values in {name}. 'permissible_values' not present."
+            )
+        elif "reachable_from" not in enums[name]:
+            logger.warning(
+                f"Cannot delete permissible_values in {name}. 'reachable_from' not present."
+            )
     filepath.write_text(
         yaml.dump(
             parsed,
@@ -269,7 +283,6 @@ def clear_permissible_values(filepath: Path):
             explicit_start=True,
         )
     )
-    logger.info(f"Cleared permissible_values from {filepath}")
 
 
 parser = argparse.ArgumentParser(
