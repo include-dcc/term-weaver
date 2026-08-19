@@ -23,11 +23,11 @@ Example:
 #### Re-expansion
 To rerun the expansion script on a file, remove the `permissible_values` field from the YAML file. This can either be done by deleting it manually or running the following script for each file:
 
-`mini --clear {path/to/file}`
+`mini --clear {file_name}`
 
 Example:
 
-`mini --clear src/cam_source_enums/schema/EnumName.yaml`
+`mini --clear EnumName`
 
 ### To write the expanded output to a new filepath:
 `tweaver -s {path/to/source/files} -m {model_name}`
