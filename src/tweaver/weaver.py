@@ -4,48 +4,15 @@ import io
 import logging
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 import yaml
-from rich.console import Console
-from rich.logging import RichHandler
-from rich.traceback import install
+from car_utils import setup_logging
 
 from tweaver.__init__ import __version__
 
 logger = logging.getLogger(__name__)
 # Rich Logging if rich is installed
-if sys.stderr.isatty():
-    from rich.console import Console
-    from rich.logging import RichHandler
-    from rich.traceback import install
-
-
-def init_logging(loglevel: str | None = None):
-    # When we are in the terminal, let's use the rich logging
-    if loglevel is None:
-        loglevel = "WARN"
-    DATEFMT = "%Y-%m-%dT%H:%M:%SZ"
-    if sys.stderr.isatty():
-        install(show_locals=True)
-
-        handler = RichHandler(
-            level=loglevel,
-            console=Console(stderr=True),
-            show_time=False,
-            show_level=True,
-            markup=True,
-            rich_tracebacks=True,
-        )
-        FORMAT = "%(message)s"
-    else:
-        FORMAT = "%(asctime)s\t%(levelname)s\t%(message)s"
-        handler = logging.StreamHandler()
-
-    logging.basicConfig(
-        level=loglevel, format=FORMAT, datefmt=DATEFMT, handlers=[handler]
-    )
 
 
 prefix_dict = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
@@ -85,145 +52,216 @@ class IndentedDumper(yaml.Dumper):
         return super().increase_indent(flow=flow, indentless=False)
 
 
+def _resolve_enum_imports(imports: list, local_filepath: Path) -> list[Path]:
+    """Resolve enum imports list to file path."""
+    resolved = []
+    for imp in imports:
+        if not imp.split("/")[-1].startswith("Enum"):
+            continue
+        filename = imp.split("/")[-1]
+        matches = list(local_filepath.resolve().glob(f"**/{filename}.yaml"))
+        if not matches:
+            logger.warning(f"{imp} file not found.")
+            continue
+        resolved.append(matches[0])
+    return resolved
+
+
+def _parse_reachable(reachable: dict) -> dict:
+    """Parse reachable_from block."""
+    source_ontology = reachable.get("source_ontology")
+    return {
+        "ontology": source_ontology.split(":")[1]
+        if source_ontology and ":" in source_ontology
+        else None,
+        "nodes": reachable.get("source_nodes"),
+        "is_direct": reachable.get("is_direct"),
+        "include_self": reachable.get("include_self"),
+        "minus": reachable.get("minus"),
+    }
+
+
+def _compute_minus_codes(
+    reachable: dict, endpoint: str, iri: str | None, enum_file: Path, has_nodes: list
+) -> set:
+    """Compute the set of codes to exclude from permissible_values."""
+    minus = reachable.get("minus", [])
+    minus_codes = set()
+    if isinstance(minus, dict):
+        minus_codes.update(minus.get("permissible_values", []))
+    else:
+        for minus_item in minus:
+            if isinstance(minus_item, str):
+                minus_codes.add(minus_item)
+                continue
+            if "permissible_values" in minus_item:
+                minus_codes.update(minus_item["permissible_values"])
+                continue
+            parsed = _parse_reachable(minus_item.get("reachable_from", {}))
+            if not parsed["nodes"] or not parsed["ontology"]:
+                continue
+            for node in parsed["nodes"]:
+                minus_codes.add(node)
+                node_values, failed = _expand_enum_for_node(
+                    node,
+                    parsed["ontology"],
+                    enum_file,
+                    endpoint,
+                    parsed,
+                    has_nodes,
+                    iri,
+                )
+                if not failed:
+                    minus_codes.update(node_values.keys())
+    return minus_codes
+
+
+def _expand_enum_for_node(
+    node: str,
+    ontology: str,
+    expanded_enum: Path,
+    endpoint: str,
+    reachable: dict,
+    has_nodes: list,
+    iri: str | None,
+):
+    """Run dragon_search for a single node and return parsed permissible values"""
+    cmd = [
+        "dragon_search",
+        "-ak",
+        str(node),
+        "-o",
+        str(ontology),
+        "-f",
+        str(expanded_enum),
+        str(endpoint),
+        "-s",
+        "0",
+    ]
+    if reachable.get("include_self"):
+        cmd.append("-p")
+    if iri:
+        cmd.extend(["-i", str(iri)])
+
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        logger.error(f"Failed for {node}: {result.stdout}")
+        logger.error(f"Failed for {node}: {result.stderr}")
+        return {}, True
+    parsed_nodes = parsed_csv(expanded_enum.read_text(), endpoint, has_nodes)
+    return parsed_nodes, False
+
+
+def _write_expanded_enum(
+    expanded_enum: Path, parsed: dict, name: str, permissible_values: dict
+):
+    """Write the expanded enum YAML file with permissible_values."""
+    parsed["enums"][name]["permissible_values"] = permissible_values
+    expanded_enum.write_text(
+        yaml.dump(
+            parsed,
+            Dumper=IndentedDumper,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+            explicit_start=True,
+        )
+    )
+
+
 def expand(
     local_filepath: Path,
-    model_name: str | None = None,
     iri: str | None = None,
 ):
     """Extract Enums from a monolithic LinkML model into individual YAML files
     Args:
         local_filepath: The file containing the monolithic linkml model
-        model_name: The name of the model in the output directory where the enum YAMLs are to be written
         iri: Optional iri if a specific iri is desired other than the iri derived programattically
     Returns:
         list of enum names
     """
 
-    output_filepath = Path(f"src/{model_name}/schema")
-    output_filepath.mkdir(parents=True, exist_ok=True)
-    enum_count = 0
+    model_filename = local_filepath.parent.name + ".yaml"
+    model_file = local_filepath / model_filename
+
     expanded_count = 0
     enum_names = []
-    for enum_file in local_filepath.glob("Enum*.yaml"):
+    if not model_file.exists():
+        logger.error(f"{model_file} not found.")
+        return enum_names
+
+    model_parsed = yaml.safe_load(model_file.read_text())
+    imports = model_parsed.get("imports", [])
+    enum_files = _resolve_enum_imports(imports, local_filepath)
+
+    for enum_file in enum_files:
         raw_enum = enum_file.read_text()
         parsed = yaml.safe_load(raw_enum)
-
         enums = parsed.get("enums", {})
+
         for name, enum in enums.items():
             enum_names.append(name)
-            expanded_enum = output_filepath / f"{name}.yaml"
-
+            reachable = _parse_reachable(enum.get("reachable_from") or {})
+            endpoint = "-c" if reachable["is_direct"] else "-d"
             has_permissible = (
-                "permissible_values" in (enum) and enum["permissible_values"]
+                "permissible_values" in enum and enum["permissible_values"]
             )
 
-            has_reachable = enum.get("reachable_from") or {}
-            has_ontology = has_reachable.get("source_ontology")
-            has_nodes = has_reachable.get("source_nodes")
-            has_direct = has_reachable.get("is_direct")
-
-            endpoint = "-c" if has_direct else "-d"
-
-            if has_permissible or not has_ontology:
-                expanded_enum.write_text(raw_enum)
-                logger.info(f"Copied {name} (does not require expansion)")
-                enum_count += 1
+            if (
+                has_permissible
+                or not reachable["ontology"]
+                or ".owl" in reachable["ontology"]
+            ):
+                logger.info(f"Skipping {name}. Does not require expansion.")
                 expanded_count += 1
                 continue
 
-            if not has_ontology:
-                continue
-            ontology = has_ontology.split(":")[1]
-            if not has_nodes:
+            if not reachable["nodes"]:
                 continue
 
+            minus_codes = _compute_minus_codes(
+                enum.get("reachable_from") or {},
+                endpoint,
+                iri,
+                enum_file,
+                reachable["nodes"],
+            )
             all_permissible_values = {}
             node_failed = False
 
-            for node in has_nodes:
-                cmd = [
-                    "dragon_search",
-                    "-ak",
-                    str(node),
-                    "-o",
-                    str(ontology),
-                    "-f",
-                    str(expanded_enum.absolute()),
-                    str(endpoint),
-                    "-s",
-                    "0",
-                ]
-                if has_reachable.get("include_self"):
-                    cmd.append("-p")
-                if iri:
-                    cmd.extend(["-i", str(iri)])
-
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, check=False
+            for node in reachable["nodes"]:
+                node_values, failed = _expand_enum_for_node(
+                    node,
+                    reachable["ontology"],
+                    enum_file,
+                    endpoint,
+                    reachable,
+                    reachable["nodes"],
+                    iri,
                 )
-                enum_count += 1
-                if result.returncode != 0:
-                    logger.error(f"Failed for {name}: {result.stdout}")
-                    logger.error(f"Failed for {name}: {result.stderr}")
+                if failed:
                     node_failed = True
                 else:
-                    parsed_nodes = parsed_csv(
-                        expanded_enum.read_text(), endpoint, has_nodes
-                    )
-                    all_permissible_values.update(parsed_nodes)
+                    all_permissible_values.update(node_values)
                     logger.info(f"Expanded enumeration: {name}")
 
-                if all_permissible_values:
-                    parsed["enums"][name]["permissible_values"] = all_permissible_values
-                    expanded_enum.write_text(
-                        yaml.dump(
-                            parsed,
-                            Dumper=IndentedDumper,
-                            default_flow_style=False,
-                            sort_keys=False,
-                            allow_unicode=True,
-                            explicit_start=True,
-                        )
-                    )
-                    if not node_failed:
-                        expanded_count += 1
+            if minus_codes:
+                logger.info(f"Excluding {minus_codes}")
+                all_permissible_values = {
+                    k: v
+                    for k, v in all_permissible_values.items()
+                    if k not in minus_codes
+                }
 
+            if all_permissible_values:
+                _write_expanded_enum(enum_file, parsed, name, all_permissible_values)
+                if not node_failed:
+                    expanded_count += 1
+
+    enum_count = len(enum_names)
     if expanded_count != enum_count:
-        logger.error(f"{enum_count - expanded_count} failed to be expanded.")
+        logger.warning(f"{enum_count - expanded_count} failed to be expanded.")
     return enum_names
-
-
-def copy_model(local_filepath: Path, model_name: str):
-    """Copies source model file to the same name and location as the output filepath.
-        Replaces "source" with "expanded" in the id, name, title, and description properties
-    Args:
-        local_filepath: The path containing the source model YAML file
-        model_name: The name of the model for the expanded YAML file
-    """
-    model_filepath = Path(f"src/{model_name}/schema")
-    model_filepath.mkdir(parents=True, exist_ok=True)
-
-    for file in local_filepath.glob("*_source*.yaml"):
-        orig = file.read_text()
-        parsed = yaml.safe_load(orig)
-        for key in ["id", "name", "title", "description"]:
-            if parsed.get(key):
-                parsed[key] = (
-                    parsed[key]
-                    .replace("Source", "Expanded")
-                    .replace("source", "expanded")
-                )
-        yaml_file = model_filepath / f"{model_name}.yaml"
-        yaml_file.write_text(
-            yaml.dump(
-                parsed,
-                sort_keys=False,
-                Dumper=IndentedDumper,
-                indent=2,
-                default_flow_style=False,
-                explicit_start=True,
-            )
-        )
 
 
 def restricted_chars(arg: str):
@@ -233,6 +271,40 @@ def restricted_chars(arg: str):
             f"Invalid input '{arg}'. Model names can only contain alphanumeric characters, underscores, and dashes. See LinkML docs for more details: https://linkml.io/linkml/schemas/models.html#model-level-metadata-and-directives"
         )
     return arg
+
+
+def clear_permissible_values(filepath: Path):
+    """Remove the permissible_values block from an enum YAML file.
+    Args:
+        filepath: The filepath to the file to remove permissible_values
+    """
+    if not filepath.exists():
+        logger.error(f"{filepath} not found.")
+        return
+    parsed = yaml.safe_load(filepath.read_text())
+    enums = parsed.get("enums", {})
+    for name in enums:
+        if "permissible_values" in enums[name] and "reachable_from" in enums[name]:
+            del enums[name]["permissible_values"]
+            logger.info(f"Cleared permissible_values from {name}")
+        elif "permissible_values" not in enums[name]:
+            logger.warning(
+                f"Cannot delete permissible_values in {name}. 'permissible_values' not present."
+            )
+        elif "reachable_from" not in enums[name]:
+            logger.warning(
+                f"Cannot delete permissible_values in {name}. 'reachable_from' not present."
+            )
+    filepath.write_text(
+        yaml.dump(
+            parsed,
+            Dumper=IndentedDumper,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+            explicit_start=True,
+        )
+    )
 
 
 parser = argparse.ArgumentParser(
@@ -252,17 +324,11 @@ def exec(cli_args: list[str] | None = None):
     parser.add_argument(
         "-s",
         "--source",
-        required=True,
+        required=False,
         type=Path,
         help="The source file containing the enumerations to be expanded",
     )
-    parser.add_argument(
-        "-m",
-        "--model",
-        required=True,
-        type=restricted_chars,
-        help="The model name used to construct the output directory where the expanded YAML files will be written (src/{model_name}/schema) ",
-    )
+
     parser.add_argument(
         "-i",
         "--iri",
@@ -277,15 +343,24 @@ def exec(cli_args: list[str] | None = None):
         version=f"{__version__}",
         help="Pulls the version from the __init__.py file",
     )
+    parser.add_argument(
+        "--clear",
+        required=False,
+        type=Path,
+        help="Clears permissible_values property from a speficied enum YAML file.",
+    )
 
     args = parser.parse_args(cli_args)
     # Initialize the logger with whatever the user requested
-    init_logging(args.log_level)
+    setup_logging(level=args.log_level)
+    if args.clear:
+        clear_permissible_values(args.clear)
+        return
 
+    if not args.source:
+        parser.error("-s/--source is required when not using --clear")
     expand(
         local_filepath=args.source,
-        model_name=args.model,
         iri=args.iri,
     )
-    copy_model(local_filepath=args.source, model_name=args.model)
-    return args
+    return

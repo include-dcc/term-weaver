@@ -45,5 +45,4 @@ where = ["src"]  # list of folders that contain the packages (["."] by default)
 car-utils = { git = "https://github.com/carrollaboratory/car-utils.git" }
 
 [project.scripts]
-tweaver = "tweaver.weaver:exec"
-mini = "tweaver.mini:exec"
+weaver = "tweaver.weaver:exec"
