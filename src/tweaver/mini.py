@@ -81,7 +81,9 @@ def _parse_reachable(reachable: dict) -> dict:
     }
 
 
-def _compute_minus_codes(reachable: dict) -> set:
+def _compute_minus_codes(
+    reachable: dict, endpoint: str, iri: str | None, enum_file: Path, has_nodes: list
+) -> set:
     """Compute the set of codes to exclude from permissible_values."""
     minus = reachable.get("minus", [])
     minus_codes = set()
@@ -96,7 +98,21 @@ def _compute_minus_codes(reachable: dict) -> set:
                 minus_codes.update(minus_item["permissible_values"])
                 continue
             parsed = _parse_reachable(minus_item.get("reachable_from", {}))
-            minus_codes.update(parsed["nodes"] or [])
+            if not parsed["nodes"] or not parsed["ontology"]:
+                continue
+            for node in parsed["nodes"]:
+                minus_codes.add(node)
+                node_values, failed = _expand_enum_for_node(
+                    node,
+                    parsed["ontology"],
+                    enum_file,
+                    endpoint,
+                    parsed,
+                    has_nodes,
+                    iri,
+                )
+                if not failed:
+                    minus_codes.update(node_values.keys())
     return minus_codes
 
 
@@ -203,7 +219,13 @@ def expand_mini(
             if not reachable["nodes"]:
                 continue
 
-            minus_codes = _compute_minus_codes(enum.get("reachable_from") or {})
+            minus_codes = _compute_minus_codes(
+                enum.get("reachable_from") or {},
+                endpoint,
+                iri,
+                enum_file,
+                reachable["nodes"],
+            )
             all_permissible_values = {}
             node_failed = False
 
@@ -341,5 +363,4 @@ def exec(cli_args: list[str] | None = None):
         local_filepath=args.source,
         iri=args.iri,
     )
-    logger.info("Script completed successfully")
     return
