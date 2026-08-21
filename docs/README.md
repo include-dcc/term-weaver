@@ -13,24 +13,25 @@ pip install -e ".[dev]"
 This enables rich output which can be helpful.
 
 ## Running the script
-`tweaver -s {path/to/source/files} -m {model_name}`
+### To write the expanded output inline:
+`weaver -s {path/to/source/directory}` or `just expand`
 
-- The tool uses the model name to create the output filepath as `src/{model_name}/schema`
+Example:
+
+`weaver -s src/cam_source_enums/schema/`
+
+#### Re-expansion
+To rerun the expansion script on a file, remove the `permissible_values` field from the YAML file. This can either be done by deleting it manually or running the following script for each file:
+
+`weaver --clear {file_name}` or `just clear {file_name}`
+
+Example:
+
+`weaver --clear EnumName`
 
 
 ## Model YAML File Conventions
-The tool copies the source model YAML file to make the expanded model YAML file.
-The file is written to the output filepath location and uses the path to create the name.
-
-Example:<br>
-- output = src/enums_expanded_file<br>
-- expanded model YAML = src/enums_expanded_file/enums_expanded_file.yaml
-
-The tool uses text substituion to modify the content of the "id", "name", "title", and "description" properties. All instances of the word `source` are replaced with `expanded` in these fields.
-
 The following conventions must be used for files to be findable by the script:
-- The source model YAML file must include `_source` in the title<br>
-  - Example: enums_source_file
 - The enumeration file names must start with `Enum`<br>
   - Example: EnumDataFile
 

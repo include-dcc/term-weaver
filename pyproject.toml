@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "term-weaver"
 description = "Enumeration Materialization"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 classifiers = [
     "Programming Language :: Python :: 3",
 ]
@@ -16,8 +16,9 @@ dependencies = [
     "linkml",
     "PyYAML",
     "jinja2",
-    "search-dragon@git+https://github.com/NIH-NCPI/search-dragon.git"
-    ]
+    "search-dragon@git+https://github.com/NIH-NCPI/search-dragon.git",
+    "car-utils",
+]
 
 dynamic = ["version"]
 
@@ -40,5 +41,8 @@ where = ["src"]  # list of folders that contain the packages (["."] by default)
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
 
+[tool.uv.sources]
+car-utils = { git = "https://github.com/carrollaboratory/car-utils.git" }
+
 [project.scripts]
-tweaver = "tweaver.weaver:exec"
+weaver = "tweaver.weaver:exec"
