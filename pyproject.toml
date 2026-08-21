@@ -16,8 +16,9 @@ dependencies = [
     "linkml",
     "PyYAML",
     "jinja2",
-    "search-dragon@git+https://github.com/NIH-NCPI/search-dragon.git"
-    ]
+    "search-dragon@git+https://github.com/NIH-NCPI/search-dragon.git",
+    "car-utils",
+]
 
 dynamic = ["version"]
 
@@ -40,6 +41,8 @@ where = ["src"]  # list of folders that contain the packages (["."] by default)
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
 
+[tool.uv.sources]
+car-utils = { git = "https://github.com/carrollaboratory/car-utils.git" }
+
 [project.scripts]
-tweaver = "tweaver.weaver:exec"
-mini = "tweaver.mini:exec"
+weaver = "tweaver.weaver:exec"
