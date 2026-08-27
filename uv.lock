@@ -669,6 +669,38 @@ wheels = [
 ]
 
 [[package]]
+name = "py-horned-owl"
+version = "1.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jinja2" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a5/3a/32c4a264f46b909a16b30e0e709f5cebacc785ce898a0a3167cd8b7b6801/py_horned_owl-1.4.1.tar.gz", hash = "sha256:39af8ad9da6405a67052e0cdf1152e4296b4b99eeb36e49516c4dfa598df2377", size = 285244, upload-time = "2026-07-15T08:47:38.303Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d8/80/c814e788ae6bcba984bc1b462c8d6da463c63532376548600e3fefd1c86c/py_horned_owl-1.4.1-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:453f9e0bbd0462fb57dc357a8d9e2f97d7ecba80590680fc721849741998a3b0", size = 2227356, upload-time = "2026-07-15T08:46:36.93Z" },
+    { url = "https://files.pythonhosted.org/packages/15/60/b0e89ba105988c82b5041b1c3c51e95f6a2aa249baa4767dd0782cb7b620/py_horned_owl-1.4.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:8cc5f8ec35d9aae90628d3aaca48be38b874de920ea80fb429a7ef115dcc95ee", size = 2140919, upload-time = "2026-07-15T08:46:38.117Z" },
+    { url = "https://files.pythonhosted.org/packages/17/6d/f459db540e02d35a65b01e774b243dc18f7919c403b718bb0b42e723d794/py_horned_owl-1.4.1-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:4b6b80947e29aacd823ee96d68a38c6db60714cdcaf25b14328edae77089cd3a", size = 3862166, upload-time = "2026-07-15T08:46:39.391Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/8b/f8ac41b26f4a6b2d5d77cfbca15df2f804c07c8f61ecd749f50be210c72d/py_horned_owl-1.4.1-cp312-cp312-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:5a9c7cc34d7b5952110c5c90a0ab586e678948f885e0e24aa17ff32f979a1dbb", size = 2367332, upload-time = "2026-07-15T08:46:40.786Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/ab/477f7d5dc5dc5674e58beca1549d90ec7e362d10f00c4d820ce902d0e25b/py_horned_owl-1.4.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5e2265062148d29d54c080588b2e6f4eefdbe2a39d0bb0d71105bb11198820c6", size = 2293080, upload-time = "2026-07-15T08:46:42.221Z" },
+    { url = "https://files.pythonhosted.org/packages/be/b3/56f396b31029659dd939d6702bc886d121d3f060d21ca3a2add0b9844eed/py_horned_owl-1.4.1-cp312-cp312-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:c4f43b7303a610ebac93ff954aeff99c295f432c1be5c1f4376c4df933c689ab", size = 2459447, upload-time = "2026-07-15T08:46:43.572Z" },
+    { url = "https://files.pythonhosted.org/packages/44/5c/b42816c63d66d0434399b10a03242af3d7911eaa3d4df73833f3342aabb9/py_horned_owl-1.4.1-cp312-cp312-musllinux_1_2_i686.whl", hash = "sha256:ee27a9bc343a9912829a327f19d89e86ee9d9907969ac93917c1209eece546b9", size = 2570211, upload-time = "2026-07-15T08:46:44.755Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/a2/364ed4cd3d269ffb40f6e001c16072b3ecb815b33d40f56c7972eef621fa/py_horned_owl-1.4.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:f8a5517aa2b0bfb520f29f2b0b21a668ccbb1699c57ba0d798f946997f765562", size = 2485654, upload-time = "2026-07-15T08:46:45.972Z" },
+    { url = "https://files.pythonhosted.org/packages/14/44/a8f09c3e8fd146353a2d4365a851274fe70f3e2c8cc206492f057a9acb79/py_horned_owl-1.4.1-cp312-cp312-win_amd64.whl", hash = "sha256:094f7ae2d0310356bc1bc5ffe8ac99488c5eb677d56d151fe42bfce23571a6a6", size = 2184891, upload-time = "2026-07-15T08:46:47.178Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/8c/e59a5bdbd929cf59d51e335ba1b1be0b2587fb10f622f00b55c1d894c7b3/py_horned_owl-1.4.1-cp312-cp312-win_arm64.whl", hash = "sha256:038e49c6ecdab552f8b86afe12f0fbe4e7689473191381f7c924a0d19259ff7d", size = 1891849, upload-time = "2026-07-15T08:46:48.338Z" },
+    { url = "https://files.pythonhosted.org/packages/00/1a/96efd043737c74a50234a4f32cc95e12af80aee6f628632726b726b75533/py_horned_owl-1.4.1-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:1bf1503264e139384e3bdc4a0ab9971e4c1596dc8f8e21fda67bd1b47af8e83c", size = 2227142, upload-time = "2026-07-15T08:46:49.494Z" },
+    { url = "https://files.pythonhosted.org/packages/61/e2/2bc4ee4a332cb0c7564a1ccabb427cf501e7845bc3e255ebf025f8a73a05/py_horned_owl-1.4.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:c8d1f3af43eca304774654bd39aa7a68c4aee945be565d76bbf41b57e959dd43", size = 2140336, upload-time = "2026-07-15T08:46:50.573Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/ea/3cfa9494ab87688fab7eb1363d490c9c4b621648ccff9fd4b862c6cc7ca7/py_horned_owl-1.4.1-cp313-cp313-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:1b254d32b6f22fb835996dad7efec0a20769c18913857bee1987f08bd63b1940", size = 3862157, upload-time = "2026-07-15T08:46:51.945Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/01/7bc2161974f7d7d73499ce01349cab96ee12450026df82dd346fcf6eac4f/py_horned_owl-1.4.1-cp313-cp313-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:8154205b106d3b7c604f300d29943f081adea664c871a98d607d2ba497555229", size = 2367712, upload-time = "2026-07-15T08:46:53.414Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/9a/999edc948759c9cca38539997209178b1dcab6898c40b960541f5561c835/py_horned_owl-1.4.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a2eedcfbbb45851a3621825b13ded74b33f353aaecf75613a9d76f7978bf1cb2", size = 2292266, upload-time = "2026-07-15T08:46:55.171Z" },
+    { url = "https://files.pythonhosted.org/packages/60/6e/ac8a19044d5696aa9602a12f4b5e2bbc8405709397988a7ae9f7b8c242fb/py_horned_owl-1.4.1-cp313-cp313-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:6691a9b0694c172127af5fb67d8dac2a0ca9d2bd75839f0f3ec42c869a51e862", size = 2459191, upload-time = "2026-07-15T08:46:56.364Z" },
+    { url = "https://files.pythonhosted.org/packages/52/b2/2203571f1e284c1cdeba0ace42e0ec187ea2032ca2f5a91b20e58109800f/py_horned_owl-1.4.1-cp313-cp313-musllinux_1_2_i686.whl", hash = "sha256:4dfca0da8a19dd240248fadb6d67fd260f86bcf1f4e77910f0ac9e9b76011476", size = 2570098, upload-time = "2026-07-15T08:46:57.802Z" },
+    { url = "https://files.pythonhosted.org/packages/99/69/6ba7ad3b69e92277526a039abdb8dc356bdd01c530dcaab3522850141386/py_horned_owl-1.4.1-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:a0e36e91593d5d235bce047914dd6229f29d61a9d6c196a7402df21fdf96512f", size = 2484838, upload-time = "2026-07-15T08:46:59.068Z" },
+    { url = "https://files.pythonhosted.org/packages/92/d7/1dc3a14d5a527781b8910cfaaf4762dc3b5b2e1ff72ce7ff72b881576a17/py_horned_owl-1.4.1-cp313-cp313-win32.whl", hash = "sha256:608ef58e8aa9f51b2aa4cf96038e5381ee4e2165c5fe3b0f258f230e26e7b236", size = 1735988, upload-time = "2026-07-15T08:47:00.407Z" },
+    { url = "https://files.pythonhosted.org/packages/97/2d/fb0e19e4165ba0ec0a296f681480bfdd49374191ed71b74fc10c89192438/py_horned_owl-1.4.1-cp313-cp313-win_amd64.whl", hash = "sha256:a9dc9d8006a5b74d4a7cd695e3807fc05c666948ee215373a77b22d2453ecae5", size = 2184539, upload-time = "2026-07-15T08:47:01.478Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/4b/7b58b73fef4d80fe15dc7f7010e5bc9e78c3259970a2e13af4a10f40e5a8/py_horned_owl-1.4.1-cp313-cp313-win_arm64.whl", hash = "sha256:f8cb50b580f7de9d1a38295d97960ec1713437f675ae933bee0b7c919b0b20a6", size = 1891547, upload-time = "2026-07-15T08:47:02.595Z" },
+]
+
+[[package]]
 name = "pydantic"
 version = "2.13.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1231,6 +1263,7 @@ dependencies = [
     { name = "car-utils" },
     { name = "jinja2" },
     { name = "linkml" },
+    { name = "py-horned-owl" },
     { name = "pyyaml" },
     { name = "requests" },
     { name = "search-dragon" },
@@ -1248,6 +1281,7 @@ requires-dist = [
     { name = "car-utils", git = "https://github.com/carrollaboratory/car-utils.git" },
     { name = "jinja2" },
     { name = "linkml" },
+    { name = "py-horned-owl", specifier = ">=1.4.1" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pyyaml" },
     { name = "requests" },
