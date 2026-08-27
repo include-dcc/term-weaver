@@ -18,6 +18,7 @@ dependencies = [
     "jinja2",
     "search-dragon@git+https://github.com/NIH-NCPI/search-dragon.git",
     "car-utils",
+    "py-horned-owl>=1.4.1",
 ]
 
 dynamic = ["version"]
@@ -46,3 +47,4 @@ car-utils = { git = "https://github.com/carrollaboratory/car-utils.git" }
 
 [project.scripts]
 weaver = "tweaver.weaver:exec"
+owl_convert = "tweaver.owl_converter:exec"
