@@ -8,6 +8,8 @@ from pathlib import Path
 
 import yaml
 from car_utils import setup_logging
+from rdflib import RDFS, Graph, URIRef
+from rdflib.namespace import SKOS
 
 from tweaver.__init__ import __version__
 
@@ -16,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 prefix_dict = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
+OWL_LOCAL_FILES = {"http://purl.org/ga4gh/kin.owl": Path("converted/kin.owl")}
 
 
 def parsed_csv(csv_text: str, endpoint: str, source_nodes: list) -> dict:
@@ -169,13 +172,94 @@ def _write_expanded_enum(
     )
 
 
+def _expand_owl(
+    ontology_url: str,
+    source_nodes: list,
+    is_direct: bool,
+    include_self: bool,
+) -> dict:
+    """Expand enum permissible values from an OWL file using rdflib."""
+
+    g = Graph()
+
+    local_file = OWL_LOCAL_FILES.get(ontology_url)
+    if local_file and local_file.exists():
+        logger.info(f"Using local converted file: {local_file}")
+        g.parse(str(local_file))
+        g.bind("KIN", "http://purl.org/ga4gh/kin.owl#")
+    else:
+        logger.info(f"Loading OWL file from {ontology_url}")
+        g.parse(ontology_url)
+
+    def get_label(uri):
+        for label in g.objects(URIRef(uri), RDFS.label):
+            return str(label)
+        return None
+
+    def get_description(uri):
+        for desc in g.objects(URIRef(uri), SKOS.definition):
+            return str(desc)
+        return None
+
+    def get_descendants(node_uri, direct_only):
+        descendants = set()
+        for s, p, o in g.triples((None, RDFS.subPropertyOf, URIRef(node_uri))):
+            descendants.add(str(s))
+            if not direct_only:
+                descendants.update(get_descendants(str(s), direct_only))
+        return descendants
+
+    def uri_to_curie(uri):
+        for prefix, ns in g.namespaces():
+            ns_str = str(ns)
+            if uri.startswith(ns_str):
+                return f"{prefix}:{uri[len(ns_str) :]}"
+        return uri
+
+    permissible_values = {}
+    for node in source_nodes:
+        node_uri = None
+        for prefix, ns in g.namespaces():
+            curie_prefix = node.split(":")[0]
+            if prefix.lower() == curie_prefix.lower():
+                local = node.split(":")[1]
+                node_uri = str(ns) + local
+                break
+        if not node_uri:
+            logger.warning(f"Could not resolve {node} to a URI")
+            continue
+
+        if include_self:
+            label = get_label(node_uri)
+            desc = get_description(node_uri)
+            entry = {"title": label or node, "meaning": node}
+            if desc:
+                entry["description"] = desc
+            permissible_values[node] = entry
+
+        logger.info("KIN_001 outgoing triples:")
+        for p, o in g.predicate_objects(URIRef(node_uri)):
+            logger.info(f"  {p} -> {o}")
+        descendants = get_descendants(node_uri, is_direct)
+        for desc_uri in descendants:
+            curie = uri_to_curie(desc_uri)
+            label = get_label(desc_uri)
+            description = get_description(desc_uri)
+            entry = {"title": label or curie, "meaning": curie}
+            if description:
+                entry["description"] = description
+            permissible_values[curie] = entry
+
+    return permissible_values
+
+
 def expand(
     local_filepath: Path,
     iri: str | None = None,
 ):
     """Extract Enums from a monolithic LinkML model into individual YAML files
     Args:
-        local_filepath: The file containing the monolithic linkml model
+        local_filepath: The file cont aining the monolithic linkml model
         iri: Optional iri if a specific iri is desired other than the iri derived programattically
     Returns:
         list of enum names
@@ -206,12 +290,8 @@ def expand(
             has_permissible = (
                 "permissible_values" in enum and enum["permissible_values"]
             )
-
-            if (
-                has_permissible
-                or not reachable["ontology"]
-                or ".owl" in reachable["ontology"]
-            ):
+            has_ontology = (enum.get("reachable_from") or {}).get("source_ontology")
+            if has_permissible or not reachable["ontology"] or not has_ontology:
                 logger.info(f"Skipping {name}. Does not require expansion.")
                 expanded_count += 1
                 continue
@@ -228,22 +308,29 @@ def expand(
             )
             all_permissible_values = {}
             node_failed = False
-
-            for node in reachable["nodes"]:
-                node_values, failed = _expand_enum_for_node(
-                    node,
-                    reachable["ontology"],
-                    enum_file,
-                    endpoint,
-                    reachable,
-                    reachable["nodes"],
-                    iri,
+            if has_ontology and ".owl" in has_ontology:
+                all_permissible_values = _expand_owl(
+                    ontology_url=has_ontology,
+                    source_nodes=reachable["nodes"],
+                    is_direct=reachable["is_direct"] or False,
+                    include_self=reachable["include_self"] or False,
                 )
-                if failed:
-                    node_failed = True
-                else:
-                    all_permissible_values.update(node_values)
-                    logger.info(f"Expanded enumeration: {name}")
+            else:
+                for node in reachable["nodes"]:
+                    node_values, failed = _expand_enum_for_node(
+                        node,
+                        reachable["ontology"],
+                        enum_file,
+                        endpoint,
+                        reachable,
+                        reachable["nodes"],
+                        iri,
+                    )
+                    if failed:
+                        node_failed = True
+                    else:
+                        all_permissible_values.update(node_values)
+                        logger.info(f"Expanded enumeration: {name}")
 
             if minus_codes:
                 logger.info(f"Excluding {minus_codes}")
