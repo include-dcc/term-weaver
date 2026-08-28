@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 from car_utils import setup_logging
-from rdflib import RDFS, Graph, URIRef
+from rdflib import OWL, RDF, RDFS, Graph, URIRef
 from rdflib.namespace import SKOS
 
 from tweaver.__init__ import __version__
@@ -201,30 +201,64 @@ def _expand_owl(
             return str(desc)
         return None
 
-    def get_descendants(node_uri, direct_only):
+    def get_descendants(node_uri, direct_only, predicate=None):
+        if predicate is None:
+            node_types = {str(obj) for obj in g.objects(URIRef(node_uri), RDF.type)}
+
+            if str(OWL.ObjectProperty) in node_types:
+                predicate = RDFS.subPropertyOf
+            else:
+                predicate = RDFS.subClassOf
+
         descendants = set()
-        for s, p, o in g.triples((None, RDFS.subPropertyOf, URIRef(node_uri))):
-            descendants.add(str(s))
+
+        for s, _, _ in g.triples((None, predicate, URIRef(node_uri))):
+            child_uri = str(s)
+            descendants.add(child_uri)
+
             if not direct_only:
-                descendants.update(get_descendants(str(s), direct_only))
+                descendants.update(get_descendants(child_uri, direct_only, predicate))
+
         return descendants
 
-    def uri_to_curie(uri):
-        for prefix, ns in g.namespaces():
+    def get_namespace(source_ontology):
+        return source_ontology.rsplit("/", 1)[0] + "/"
+
+    def uri_to_curie(uri, source_prefix, source_ontology):
+        output_prefix = prefix_dict.get(
+            source_prefix.upper(),
+            source_prefix,
+        )
+
+        for _, ns in g.namespaces():
             ns_str = str(ns)
             if uri.startswith(ns_str):
-                return f"{prefix}:{uri[len(ns_str) :]}"
+                return f"{output_prefix}:{uri[len(ns_str) :]}"
+
         return uri
+
+    def curie_to_uri(curie, source_ontology):
+        prefix, _, local = curie.partition(":")
+
+        normalized_prefix = prefix_dict.get(
+            prefix.upper(),
+            prefix,
+        )
+
+        for namespace_prefix, ns in g.namespaces():
+            if namespace_prefix.lower() in {
+                prefix.lower(),
+                normalized_prefix.lower(),
+            }:
+                return str(ns) + local
+
+        namespace = source_ontology.rsplit("/", 1)[0] + "/"
+        return namespace + local
 
     permissible_values = {}
     for node in source_nodes:
-        node_uri = None
-        for prefix, ns in g.namespaces():
-            curie_prefix = node.split(":")[0]
-            if prefix.lower() == curie_prefix.lower():
-                local = node.split(":")[1]
-                node_uri = str(ns) + local
-                break
+        node_uri = curie_to_uri(node, ontology_url)
+
         if not node_uri:
             logger.warning(f"Could not resolve {node} to a URI")
             continue
@@ -237,12 +271,9 @@ def _expand_owl(
                 entry["description"] = desc
             permissible_values[node] = entry
 
-        logger.info("KIN_001 outgoing triples:")
-        for p, o in g.predicate_objects(URIRef(node_uri)):
-            logger.info(f"  {p} -> {o}")
         descendants = get_descendants(node_uri, is_direct)
         for desc_uri in descendants:
-            curie = uri_to_curie(desc_uri)
+            curie = uri_to_curie(desc_uri, node.split(":")[0], ontology_url)
             label = get_label(desc_uri)
             description = get_description(desc_uri)
             entry = {"title": label or curie, "meaning": curie}
@@ -438,7 +469,6 @@ def exec(cli_args: list[str] | None = None):
     )
 
     args = parser.parse_args(cli_args)
-    # Initialize the logger with whatever the user requested
     setup_logging(level=args.log_level)
     if args.clear:
         clear_permissible_values(args.clear)
