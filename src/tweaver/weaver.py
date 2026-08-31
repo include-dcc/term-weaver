@@ -183,10 +183,15 @@ def _expand_owl(
     g = Graph()
 
     local_file = OWL_LOCAL_FILES.get(ontology_url)
+    owl_definition = URIRef(
+        "http://www.geneontology.org/formats/oboInOwl#hasDefinition"
+    )
     if local_file and local_file.exists():
         logger.info(f"Using local converted file: {local_file}")
         g.parse(str(local_file))
-        g.bind("KIN", "http://purl.org/ga4gh/kin.owl#")
+        for node in source_nodes:
+            prefix = node.split(":")[0]
+            g.bind(prefix, f"{ontology_url}#")
     else:
         logger.info(f"Loading OWL file from {ontology_url}")
         g.parse(ontology_url)
@@ -198,6 +203,8 @@ def _expand_owl(
 
     def get_description(uri):
         for desc in g.objects(URIRef(uri), SKOS.definition):
+            return str(desc)
+        for desc in g.objects(URIRef(uri), owl_definition):
             return str(desc)
         return None
 
@@ -220,9 +227,6 @@ def _expand_owl(
                 descendants.update(get_descendants(child_uri, direct_only, predicate))
 
         return descendants
-
-    def get_namespace(source_ontology):
-        return source_ontology.rsplit("/", 1)[0] + "/"
 
     def uri_to_curie(uri, source_prefix, source_ontology):
         output_prefix = prefix_dict.get(
@@ -266,9 +270,10 @@ def _expand_owl(
         if include_self:
             label = get_label(node_uri)
             desc = get_description(node_uri)
-            entry = {"title": label or node, "meaning": node}
+            entry = {"title": label or node}
             if desc:
                 entry["description"] = desc
+            entry["meaning"] = node
             permissible_values[node] = entry
 
         descendants = get_descendants(node_uri, is_direct)
@@ -276,9 +281,10 @@ def _expand_owl(
             curie = uri_to_curie(desc_uri, node.split(":")[0], ontology_url)
             label = get_label(desc_uri)
             description = get_description(desc_uri)
-            entry = {"title": label or curie, "meaning": curie}
+            entry = {"title": label or curie}
             if description:
                 entry["description"] = description
+            entry["meaning"] = curie
             permissible_values[curie] = entry
 
     return permissible_values
@@ -357,6 +363,7 @@ def expand(
                         reachable["nodes"],
                         iri,
                     )
+
                     if failed:
                         node_failed = True
                     else:
