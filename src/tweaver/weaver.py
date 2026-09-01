@@ -346,18 +346,33 @@ def _expand_owl(
         prefix, local = node.split(":", 1)
 
         node_uri = None
+
         for subject in g.subjects():
             subject_str = str(subject)
-            if (
-                subject_str.rsplit("#", 1)[-1] == local
-                or subject_str.rsplit("/", 1)[-1] == local
-            ):
+
+            # OBO: NCIT:C90528 -> NCIT_C90528
+            if "/obo/" in subject_str:
+                obo_id = subject_str.rsplit("/obo/", 1)[1]
+                if obo_id == f"{prefix}_{local}":
+                    node_uri = subject
+                    break
+
+            # Fragment-based: KIN:KIN_001 -> ...#KIN_001
+            elif "#" in subject_str:
+                if subject_str.rsplit("#", 1)[1] == local:
+                    node_uri = subject
+                    break
+
+            # Path-based: edam:topic_0003 -> .../topic_0003
+            elif subject_str.rsplit("/", 1)[-1] == local:
                 node_uri = subject
                 break
 
         if not node_uri:
             logger.warning(f"Could not resolve {node} to a URI")
             continue
+
+        logger.info(f"{node} -> {node_uri}")
 
         if include_self:
             label = get_label(node_uri)
