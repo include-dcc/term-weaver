@@ -270,6 +270,7 @@ def _expand_owl(
     owl_definition = URIRef(
         "http://www.geneontology.org/formats/oboInOwl#hasDefinition"
     )
+    iao_definition = URIRef("http://purl.obolibrary.org/obo/IAO_0000115")
     if local_file and local_file.exists():
         g.parse(str(local_file))
         logger.info(f"Using local converted file: {local_file}")
@@ -289,10 +290,14 @@ def _expand_owl(
         return None
 
     def get_description(uri):
-        for desc in g.objects(URIRef(uri), SKOS.definition):
-            return str(desc)
-        for desc in g.objects(URIRef(uri), owl_definition):
-            return str(desc)
+        for predicate in (
+            SKOS.definition,
+            owl_definition,
+            iao_definition,
+        ):
+            for desc in g.objects(URIRef(uri), predicate):
+                return str(desc)
+
         return None
 
     def get_descendants(node_uri, direct_only, predicate=None):
