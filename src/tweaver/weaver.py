@@ -4,8 +4,10 @@ import io
 import logging
 import re
 import subprocess
+import urllib.request
 from pathlib import Path
 
+import pyhornedowl
 import yaml
 from car_utils import setup_logging
 from rdflib import OWL, RDF, RDFS, Graph, URIRef
@@ -18,7 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 prefix_dict = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
-OWL_LOCAL_FILES = {"http://purl.org/ga4gh/kin.owl": Path("converted/kin.owl")}
+OWL_LOCAL_FILES = {
+    "http://purl.org/ga4gh/kin.owl": Path("converted/kin.owl"),
+    "http://purl.obolibrary.org/obo/ncit.owl": Path("converted/ncit.owl"),
+}
 
 
 def parsed_csv(csv_text: str, endpoint: str, source_nodes: list) -> dict:
@@ -172,6 +177,85 @@ def _write_expanded_enum(
     )
 
 
+def _iri_to_curie(iri: str, source_prefix: str) -> str:
+    """Convert a full IRI to a CURIE."""
+    # OBO style: http://purl.obolibrary.org/obo/NCIT_C90528
+    if "/obo/" in iri:
+        local = iri.split("/obo/")[-1]  # NCIT_C90528
+        return local.replace("_", ":", 1)  # NCIT:C90528
+    # Hash style: http://purl.org/ga4gh/kin.owl#KIN_001
+    if "#" in iri:
+        local = iri.split("#")[-1]  # KIN_001
+        prefix = local.split("_")[0]  # KIN
+        return f"{prefix}:{local}"  # KIN:KIN_001
+    return iri
+
+
+def _curie_to_iri(curie: str, onto) -> str | None:
+    return onto.get_iri_for_id(curie)
+
+
+def get_owl_descendants(
+    filepath: Path,
+    source_nodes: list,
+    ontology_url: str,
+    is_direct: bool = False,
+    include_self: bool = False,
+) -> dict:
+    logger.info(f"OWL source_nodes: {source_nodes}")
+    onto = pyhornedowl.open_ontology(str(filepath))
+    onto.build_indexes()
+    permissible_values = {}
+    logger.info(f"get_iri_for_id: {onto.get_iri_for_id}")
+    for node in source_nodes:
+        node_uri = onto.get_iri_for_id(node)
+        if not node_uri:
+            prefix, local = node.split(":", 1)
+
+            for iri in onto.get_all_iris():
+                if str(iri).rsplit("#", 1)[-1] == local:
+                    node_uri = iri
+                    break
+        if not node_uri:
+            logger.warning(f"Could not resolve {node} to a URI")
+            continue
+
+        logger.info(f"{node} -> {node_uri}")
+        onto = pyhornedowl.open_ontology(str(filepath))
+        onto.build_indexes()
+        logger.info(
+            f"ONTO METHODS: {[x for x in dir(onto) if 'iri' in x.lower() or 'id' in x.lower()]}"
+        )
+        if include_self:
+            label = onto.get_annotation(
+                node_uri, "http://www.w3.org/2000/01/rdf-schema#label"
+            )
+            entry = {"title": label or node}
+            entry["meaning"] = node
+            permissible_values[node] = entry
+
+        descendants = (
+            onto.get_subclasses(node_uri)
+            if is_direct
+            else onto.get_descendants(node_uri)
+        )
+        for desc_uri in descendants:
+            curie = _iri_to_curie(desc_uri, node.split(":", 1)[0]) or desc_uri
+            label = onto.get_annotation(
+                desc_uri, "http://www.w3.org/2000/01/rdf-schema#label"
+            )
+            description = onto.get_annotation(
+                desc_uri, "http://www.w3.org/2004/02/skos/core#definition"
+            )
+            entry = {"title": label or curie}
+            if description:
+                entry["description"] = description
+            entry["meaning"] = curie
+            permissible_values[curie] = entry
+
+    return permissible_values
+
+
 def _expand_owl(
     ontology_url: str,
     source_nodes: list,
@@ -187,11 +271,14 @@ def _expand_owl(
         "http://www.geneontology.org/formats/oboInOwl#hasDefinition"
     )
     if local_file and local_file.exists():
-        logger.info(f"Using local converted file: {local_file}")
         g.parse(str(local_file))
-        for node in source_nodes:
-            prefix = node.split(":")[0]
-            g.bind(prefix, f"{ontology_url}#")
+        logger.info(f"Using local converted file: {local_file}")
+        # return get_owl_descendants(
+        # local_file, source_nodes, ontology_url, is_direct, include_self
+        # )
+        # for node in source_nodes:
+        #     prefix = node.split(":")[0]
+        #     g.bind(prefix, f"{ontology_url}#")
     else:
         logger.info(f"Loading OWL file from {ontology_url}")
         g.parse(ontology_url)
@@ -234,34 +321,39 @@ def _expand_owl(
             source_prefix,
         )
 
-        for _, ns in g.namespaces():
-            ns_str = str(ns)
-            if uri.startswith(ns_str):
-                return f"{output_prefix}:{uri[len(ns_str) :]}"
+        uri = str(uri)
+
+        # OBO IRIs: NCIT_C90528 -> NCIT:C90528
+        if "/obo/" in uri:
+            local = uri.rsplit("/obo/", 1)[1]
+            return local.replace("_", ":", 1)
+
+        # Fragment-based ontologies: KIN_003 -> KIN:KIN_003
+        if "#" in uri:
+            local = uri.rsplit("#", 1)[1]
+            return f"{output_prefix}:{local}"
+
+        # Path-based ontologies: topic_0610 -> edam:topic_0610
+        ontology_namespace = source_ontology.rsplit("/", 1)[0] + "/"
+        if uri.startswith(ontology_namespace):
+            local = uri[len(ontology_namespace) :]
+            return f"{output_prefix}:{local}"
 
         return uri
 
-    def curie_to_uri(curie, source_ontology):
-        prefix, _, local = curie.partition(":")
-
-        normalized_prefix = prefix_dict.get(
-            prefix.upper(),
-            prefix,
-        )
-
-        for namespace_prefix, ns in g.namespaces():
-            if namespace_prefix.lower() in {
-                prefix.lower(),
-                normalized_prefix.lower(),
-            }:
-                return str(ns) + local
-
-        namespace = source_ontology.rsplit("/", 1)[0] + "/"
-        return namespace + local
-
     permissible_values = {}
     for node in source_nodes:
-        node_uri = curie_to_uri(node, ontology_url)
+        prefix, local = node.split(":", 1)
+
+        node_uri = None
+        for subject in g.subjects():
+            subject_str = str(subject)
+            if (
+                subject_str.rsplit("#", 1)[-1] == local
+                or subject_str.rsplit("/", 1)[-1] == local
+            ):
+                node_uri = subject
+                break
 
         if not node_uri:
             logger.warning(f"Could not resolve {node} to a URI")
@@ -345,6 +437,7 @@ def expand(
             )
             all_permissible_values = {}
             node_failed = False
+            logger.info(f"Expanding {name}: {has_ontology}")
             if has_ontology and ".owl" in has_ontology:
                 all_permissible_values = _expand_owl(
                     ontology_url=has_ontology,
@@ -352,6 +445,14 @@ def expand(
                     is_direct=reachable["is_direct"] or False,
                     include_self=reachable["include_self"] or False,
                 )
+                if all_permissible_values:
+                    logger.info(
+                        f"{name}: OWL expansion returned "
+                        f"{len(all_permissible_values)} values"
+                    )
+                else:
+                    node_failed = True
+                    logger.warning(f"{name}: OWL expansion returned no values")
             else:
                 for node in reachable["nodes"]:
                     node_values, failed = _expand_enum_for_node(
@@ -366,6 +467,7 @@ def expand(
 
                     if failed:
                         node_failed = True
+                        logger.warning(f"{node}: Search Dragon expansion failed")
                     else:
                         all_permissible_values.update(node_values)
                         logger.info(f"Expanded enumeration: {name}")
