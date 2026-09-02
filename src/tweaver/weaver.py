@@ -4,10 +4,8 @@ import io
 import logging
 import re
 import subprocess
-import urllib.request
 from pathlib import Path
 
-import pyhornedowl
 import yaml
 from car_utils import setup_logging
 from rdflib import OWL, RDF, RDFS, Graph, URIRef
@@ -105,22 +103,33 @@ def _compute_minus_codes(
             if "permissible_values" in minus_item:
                 minus_codes.update(minus_item["permissible_values"])
                 continue
-            parsed = _parse_reachable(minus_item.get("reachable_from", {}))
+            minus_reachable = minus_item.get("reachable_from", {})
+            parsed = _parse_reachable(minus_reachable)
             if not parsed["nodes"] or not parsed["ontology"]:
                 continue
-            for node in parsed["nodes"]:
-                minus_codes.add(node)
-                node_values, failed = _expand_enum_for_node(
-                    node,
-                    parsed["ontology"],
-                    enum_file,
-                    endpoint,
-                    parsed,
-                    has_nodes,
-                    iri,
+            source_ontology = minus_reachable.get("source_ontology")
+            if ".owl" in source_ontology:
+                node_values = _expand_owl(
+                    ontology_url=source_ontology,
+                    source_nodes=parsed["nodes"],
+                    is_direct=parsed["is_direct"] or False,
+                    include_self=parsed["include_self"] or False,
                 )
-                if not failed:
-                    minus_codes.update(node_values.keys())
+                minus_codes.update(node_values.keys())
+            else:
+                for node in parsed["nodes"]:
+                    minus_codes.add(node)
+                    node_values, failed = _expand_enum_for_node(
+                        node,
+                        parsed["ontology"],
+                        enum_file,
+                        endpoint,
+                        parsed,
+                        has_nodes,
+                        iri,
+                    )
+                    if not failed:
+                        minus_codes.update(node_values.keys())
     return minus_codes
 
 
@@ -177,85 +186,6 @@ def _write_expanded_enum(
     )
 
 
-def _iri_to_curie(iri: str, source_prefix: str) -> str:
-    """Convert a full IRI to a CURIE."""
-    # OBO style: http://purl.obolibrary.org/obo/NCIT_C90528
-    if "/obo/" in iri:
-        local = iri.split("/obo/")[-1]  # NCIT_C90528
-        return local.replace("_", ":", 1)  # NCIT:C90528
-    # Hash style: http://purl.org/ga4gh/kin.owl#KIN_001
-    if "#" in iri:
-        local = iri.split("#")[-1]  # KIN_001
-        prefix = local.split("_")[0]  # KIN
-        return f"{prefix}:{local}"  # KIN:KIN_001
-    return iri
-
-
-def _curie_to_iri(curie: str, onto) -> str | None:
-    return onto.get_iri_for_id(curie)
-
-
-def get_owl_descendants(
-    filepath: Path,
-    source_nodes: list,
-    ontology_url: str,
-    is_direct: bool = False,
-    include_self: bool = False,
-) -> dict:
-    logger.info(f"OWL source_nodes: {source_nodes}")
-    onto = pyhornedowl.open_ontology(str(filepath))
-    onto.build_indexes()
-    permissible_values = {}
-    logger.info(f"get_iri_for_id: {onto.get_iri_for_id}")
-    for node in source_nodes:
-        node_uri = onto.get_iri_for_id(node)
-        if not node_uri:
-            prefix, local = node.split(":", 1)
-
-            for iri in onto.get_all_iris():
-                if str(iri).rsplit("#", 1)[-1] == local:
-                    node_uri = iri
-                    break
-        if not node_uri:
-            logger.warning(f"Could not resolve {node} to a URI")
-            continue
-
-        logger.info(f"{node} -> {node_uri}")
-        onto = pyhornedowl.open_ontology(str(filepath))
-        onto.build_indexes()
-        logger.info(
-            f"ONTO METHODS: {[x for x in dir(onto) if 'iri' in x.lower() or 'id' in x.lower()]}"
-        )
-        if include_self:
-            label = onto.get_annotation(
-                node_uri, "http://www.w3.org/2000/01/rdf-schema#label"
-            )
-            entry = {"title": label or node}
-            entry["meaning"] = node
-            permissible_values[node] = entry
-
-        descendants = (
-            onto.get_subclasses(node_uri)
-            if is_direct
-            else onto.get_descendants(node_uri)
-        )
-        for desc_uri in descendants:
-            curie = _iri_to_curie(desc_uri, node.split(":", 1)[0]) or desc_uri
-            label = onto.get_annotation(
-                desc_uri, "http://www.w3.org/2000/01/rdf-schema#label"
-            )
-            description = onto.get_annotation(
-                desc_uri, "http://www.w3.org/2004/02/skos/core#definition"
-            )
-            entry = {"title": label or curie}
-            if description:
-                entry["description"] = description
-            entry["meaning"] = curie
-            permissible_values[curie] = entry
-
-    return permissible_values
-
-
 def _expand_owl(
     ontology_url: str,
     source_nodes: list,
@@ -267,21 +197,14 @@ def _expand_owl(
     g = Graph()
 
     local_file = OWL_LOCAL_FILES.get(ontology_url)
-    owl_definition = URIRef(
+    owl_hasdefinition = URIRef(
         "http://www.geneontology.org/formats/oboInOwl#hasDefinition"
     )
     iao_definition = URIRef("http://purl.obolibrary.org/obo/IAO_0000115")
     if local_file and local_file.exists():
         g.parse(str(local_file))
         logger.info(f"Using local converted file: {local_file}")
-        # return get_owl_descendants(
-        # local_file, source_nodes, ontology_url, is_direct, include_self
-        # )
-        # for node in source_nodes:
-        #     prefix = node.split(":")[0]
-        #     g.bind(prefix, f"{ontology_url}#")
     else:
-        logger.info(f"Loading OWL file from {ontology_url}")
         g.parse(ontology_url)
 
     def get_label(uri):
@@ -292,7 +215,7 @@ def _expand_owl(
     def get_description(uri):
         for predicate in (
             SKOS.definition,
-            owl_definition,
+            owl_hasdefinition,
             iao_definition,
         ):
             for desc in g.objects(URIRef(uri), predicate):
@@ -328,17 +251,14 @@ def _expand_owl(
 
         uri = str(uri)
 
-        # OBO IRIs: NCIT_C90528 -> NCIT:C90528
         if "/obo/" in uri:
             local = uri.rsplit("/obo/", 1)[1]
             return local.replace("_", ":", 1)
 
-        # Fragment-based ontologies: KIN_003 -> KIN:KIN_003
         if "#" in uri:
             local = uri.rsplit("#", 1)[1]
             return f"{output_prefix}:{local}"
 
-        # Path-based ontologies: topic_0610 -> edam:topic_0610
         ontology_namespace = source_ontology.rsplit("/", 1)[0] + "/"
         if uri.startswith(ontology_namespace):
             local = uri[len(ontology_namespace) :]
@@ -355,20 +275,17 @@ def _expand_owl(
         for subject in g.subjects():
             subject_str = str(subject)
 
-            # OBO: NCIT:C90528 -> NCIT_C90528
             if "/obo/" in subject_str:
                 obo_id = subject_str.rsplit("/obo/", 1)[1]
                 if obo_id == f"{prefix}_{local}":
                     node_uri = subject
                     break
 
-            # Fragment-based: KIN:KIN_001 -> ...#KIN_001
             elif "#" in subject_str:
                 if subject_str.rsplit("#", 1)[1] == local:
                     node_uri = subject
                     break
 
-            # Path-based: edam:topic_0003 -> .../topic_0003
             elif subject_str.rsplit("/", 1)[-1] == local:
                 node_uri = subject
                 break
@@ -376,8 +293,6 @@ def _expand_owl(
         if not node_uri:
             logger.warning(f"Could not resolve {node} to a URI")
             continue
-
-        logger.info(f"{node} -> {node_uri}")
 
         if include_self:
             label = get_label(node_uri)
@@ -466,13 +381,10 @@ def expand(
                     include_self=reachable["include_self"] or False,
                 )
                 if all_permissible_values:
-                    logger.info(
-                        f"{name}: OWL expansion returned "
-                        f"{len(all_permissible_values)} values"
-                    )
+                    logger.info(f"Expanded enumeration: {name}")
                 else:
                     node_failed = True
-                    logger.warning(f"{name}: OWL expansion returned no values")
+                    logger.warning(f"No values returned for {name}")
             else:
                 for node in reachable["nodes"]:
                     node_values, failed = _expand_enum_for_node(
