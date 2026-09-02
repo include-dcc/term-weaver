@@ -47,4 +47,4 @@ car-utils = { git = "https://github.com/carrollaboratory/car-utils.git" }
 
 [project.scripts]
 weaver = "tweaver.weaver:exec"
-owl_convert = "tweaver.owl_converter:exec"
+owl_handle = "tweaver.owl_handler:exec"
