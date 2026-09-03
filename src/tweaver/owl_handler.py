@@ -35,6 +35,12 @@ def save_owl(url: str, output_filepath: Path):
     logger.info(f"Saved {url} to {output_filepath}")
 
 
+def open_owl(url: str):
+    with urllib.request.urlopen(url) as response:
+        data = response.read().decode("utf-8")
+    return pyhornedowl.open_ontology_from_string(data)
+
+
 def exec():
     parser = argparse.ArgumentParser(
         description="Convert OWL2 Functional-Style Syntax to RDF/XML"
@@ -55,14 +61,14 @@ def exec():
     parser.add_argument(
         "-o",
         "--output",
-        required=True,
+        # required=True,
         type=Path,
         help="Output filename for the converted RDF/XML file.",
     )
     parser.add_argument(
         "-a",
         "--action",
-        choices=["fowl2owl", "save"],
+        choices=["fowl2owl", "save", "open"],
         default="fowl2owl",
         required=False,
         help="The type of file to convert to RDF/XML format.",
@@ -74,3 +80,5 @@ def exec():
         fowl2owl(args.url, args.output)
     if args.action == "save":
         save_owl(args.url, args.output)
+    if args.action == "open":
+        open_owl(args.url)

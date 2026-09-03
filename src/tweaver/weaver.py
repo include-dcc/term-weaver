@@ -17,7 +17,13 @@ logger = logging.getLogger(__name__)
 # Rich Logging if rich is installed
 
 
-OWL_LOCAL_FILES = {}
+OWL_LOCAL_FILES = {
+    "http://purl.org/ga4gh/kin.owl": Path("converted/kin.owl"),
+    "http://purl.obolibrary.org/obo/ncit.owl": Path("converted/ncit.owl"),
+    "https://github.com/include-dcc/camo/releases/download/v2026-08-19/camo.owl": Path(
+        "converted/camo.owl"
+    ),
+}
 prefix_dict = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
 
 
