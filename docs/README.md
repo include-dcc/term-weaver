@@ -27,8 +27,37 @@ To rerun the expansion script on a file, remove the `permissible_values` field f
 
 Example:
 
-`weaver --clear EnumName`
+`weaver --clear EnumName` or `just clear EnumName`
 
+#### Working with OWL files
+
+- OWL files in OWL2 Functional-Style Syntax (FFS) will need to be converted to RDF/XML to parse the descendants. 
+
+To convert the OWL file, run the following command:
+
+`just handle {OWL_url} {path/to/output/file}`
+
+Example:
+
+`just handle http://ontology.org/ffs.owl ontology/ffs.owl`
+
+- OWL files too large to open from the URL will need to first be saved to a file directory inside the project and added to OWL_LOCAL_FILES in src/tweaver/weaver.py
+
+To save the OWL file, run the following command:
+
+`just handle {OWL_url} {path/to/output/file} save`
+
+Example:
+
+`just handle http://ontology.org/large.owl ontology/large.owl save`
+
+To use the OWL file to expand the enumerations, add the OWL URL and path to output to **src/tweaver/weaver.py**:
+
+```
+OWL_LOCAL_FILES = {
+    "http://ontology.org/large.owll": Path("ontology/large.owl")
+}
+```
 
 ## Model YAML File Conventions
 The following conventions must be used for files to be findable by the script:

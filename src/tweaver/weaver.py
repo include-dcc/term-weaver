@@ -17,11 +17,8 @@ logger = logging.getLogger(__name__)
 # Rich Logging if rich is installed
 
 
+OWL_LOCAL_FILES = {}
 prefix_dict = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
-OWL_LOCAL_FILES = {
-    "http://purl.org/ga4gh/kin.owl": Path("converted/kin.owl"),
-    "http://purl.obolibrary.org/obo/ncit.owl": Path("converted/ncit.owl"),
-}
 
 
 def parsed_csv(csv_text: str, endpoint: str, source_nodes: list) -> dict:
