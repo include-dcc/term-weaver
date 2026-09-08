@@ -4,6 +4,7 @@ import io
 import logging
 import re
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -12,7 +13,7 @@ from rdflib import OWL, RDF, RDFS, Graph, URIRef
 from rdflib.namespace import SKOS
 
 from tweaver.__init__ import __version__
-from tweaver.owl_handler import open_owl
+from tweaver.owl_handler import open_owl, save_owl
 
 logger = logging.getLogger(__name__)
 # Rich Logging if rich is installed
@@ -20,11 +21,11 @@ logger = logging.getLogger(__name__)
 
 OWL_LOCAL_FILES = {
     "http://purl.org/ga4gh/kin.owl": Path("converted/kin.owl"),
-    "http://purl.obolibrary.org/obo/ncit.owl": Path("converted/ncit.owl"),
     "https://github.com/include-dcc/camo/releases/download/v2026-08-19/camo.owl": Path(
         "converted/camo.owl"
     ),
 }
+CACHE_MAX_AGE = timedelta(minutes=20)
 prefix_dict = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
 
 
@@ -190,6 +191,24 @@ def _write_expanded_enum(
     )
 
 
+def _get_cached_owl(ontology_url: str, cache_path: Path):
+    """Return cached OWL file and re-download it if it is older than 30 days."""
+    if cache_path.exists():
+        modified_at = datetime.fromtimestamp(cache_path.stat().st_mtime, tz=UTC)
+        age = datetime.now(UTC) - modified_at
+        if age <= CACHE_MAX_AGE:
+            logger.info(f"Using cached ontology: {cache_path}")
+            return cache_path
+        logger.info(
+            f"Cached ontology is {age.days} days old. Redownloading: {ontology_url}"
+        )
+    else:
+        logger.info(f"Downloading {ontology_url}")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    save_owl(ontology_url, cache_path)
+    return cache_path
+
+
 def _expand_owl(
     ontology_url: str,
     source_nodes: list,
@@ -197,17 +216,22 @@ def _expand_owl(
     include_self: bool,
 ) -> dict:
     """Expand enum permissible values from an OWL file using rdflib."""
-
+    logger.info(f"_expand_owl called for: {ontology_url}")
     g = Graph()
 
-    local_file = OWL_LOCAL_FILES.get(ontology_url)
     owl_hasdefinition = URIRef(
         "http://www.geneontology.org/formats/oboInOwl#hasDefinition"
     )
     iao_definition = URIRef("http://purl.obolibrary.org/obo/IAO_0000115")
+    if "ncit.owl" in ontology_url:
+        logger.info(f"Preparing NCIT cache for: {ontology_url}")
+        local_file = _get_cached_owl(ontology_url, Path("cached/ncit.owl"))
+        OWL_LOCAL_FILES[ontology_url] = local_file
+    else:
+        local_file = OWL_LOCAL_FILES.get(ontology_url)
     if local_file and local_file.exists():
         g.parse(str(local_file))
-        logger.info(f"Using local converted file: {local_file}")
+        logger.info(f"Using local file: {local_file}")
     elif "camo.owl" in ontology_url:
         g = open_owl(ontology_url)
     else:
