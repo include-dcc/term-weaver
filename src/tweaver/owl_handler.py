@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pyhornedowl
 from car_utils import setup_logging
+from rdflib import Graph
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,12 @@ def save_owl(url: str, output_filepath: Path):
 
 def open_owl(url: str):
     with urllib.request.urlopen(url) as response:
-        data = response.read().decode("utf-8")
-    return pyhornedowl.open_ontology_from_string(data)
+        data = response.read()
+
+    g = Graph()
+    g.parse(data=data, format="xml", publicID=url)
+
+    return g
 
 
 def exec():

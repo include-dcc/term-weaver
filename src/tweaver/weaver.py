@@ -12,6 +12,7 @@ from rdflib import OWL, RDF, RDFS, Graph, URIRef
 from rdflib.namespace import SKOS
 
 from tweaver.__init__ import __version__
+from tweaver.owl_handler import open_owl
 
 logger = logging.getLogger(__name__)
 # Rich Logging if rich is installed
@@ -207,6 +208,8 @@ def _expand_owl(
     if local_file and local_file.exists():
         g.parse(str(local_file))
         logger.info(f"Using local converted file: {local_file}")
+    elif "camo.owl" in ontology_url:
+        g = open_owl(ontology_url)
     else:
         g.parse(ontology_url)
 
