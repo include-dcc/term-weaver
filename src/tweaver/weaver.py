@@ -25,8 +25,9 @@ OWL_LOCAL_FILES = {
         "converted/camo.owl"
     ),
 }
-CACHE_MAX_AGE = timedelta(minutes=20)
-prefix_dict = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
+OWL_GRAPHS: dict[str, Graph] = {}
+CACHE_MAX_AGE = timedelta(days=30)
+PREFIX_DICT = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
 
 
 def parsed_csv(csv_text: str, endpoint: str, source_nodes: list) -> dict:
@@ -36,7 +37,7 @@ def parsed_csv(csv_text: str, endpoint: str, source_nodes: list) -> dict:
     argument = "children" if endpoint == "-c" else "descendants"
     for row in reader:
         code = row["descendant_code"]
-        for key, value in prefix_dict.items():
+        for key, value in PREFIX_DICT.items():
             code = code.replace(key, value)
         if code.lower() == "no results":
             print(f"No {argument} found for {row['parent_code']}")
@@ -216,26 +217,30 @@ def _expand_owl(
     include_self: bool,
 ) -> dict:
     """Expand enum permissible values from an OWL file using rdflib."""
-    logger.info(f"_expand_owl called for: {ontology_url}")
     g = Graph()
 
     owl_hasdefinition = URIRef(
         "http://www.geneontology.org/formats/oboInOwl#hasDefinition"
     )
     iao_definition = URIRef("http://purl.obolibrary.org/obo/IAO_0000115")
-    if "ncit.owl" in ontology_url:
-        logger.info(f"Preparing NCIT cache for: {ontology_url}")
-        local_file = _get_cached_owl(ontology_url, Path("cached/ncit.owl"))
-        OWL_LOCAL_FILES[ontology_url] = local_file
+    if ontology_url in OWL_GRAPHS:
+        g = OWL_GRAPHS[ontology_url]
+        logger.info(f"Using cached RDF graph: {ontology_url}")
     else:
-        local_file = OWL_LOCAL_FILES.get(ontology_url)
-    if local_file and local_file.exists():
-        g.parse(str(local_file))
-        logger.info(f"Using local file: {local_file}")
-    elif "camo.owl" in ontology_url:
-        g = open_owl(ontology_url)
-    else:
-        g.parse(ontology_url)
+        if "ncit.owl" in ontology_url:
+            local_file = _get_cached_owl(ontology_url, Path("cached/ncit.owl"))
+            OWL_LOCAL_FILES[ontology_url] = local_file
+        else:
+            local_file = OWL_LOCAL_FILES.get(ontology_url)
+        if local_file and local_file.exists():
+            g.parse(str(local_file))
+            OWL_GRAPHS[ontology_url] = g
+        elif "camo.owl" in ontology_url:
+            g = open_owl(ontology_url)
+            OWL_GRAPHS[ontology_url] = g
+        else:
+            g.parse(ontology_url)
+            OWL_GRAPHS[ontology_url] = g
 
     def get_label(uri):
         for label in g.objects(URIRef(uri), RDFS.label):
@@ -274,7 +279,7 @@ def _expand_owl(
         return descendants
 
     def uri_to_curie(uri, source_prefix, source_ontology):
-        output_prefix = prefix_dict.get(
+        output_prefix = PREFIX_DICT.get(
             source_prefix.upper(),
             source_prefix,
         )
@@ -410,9 +415,7 @@ def expand(
                     is_direct=reachable["is_direct"] or False,
                     include_self=reachable["include_self"] or False,
                 )
-                if all_permissible_values:
-                    logger.info(f"Expanded enumeration: {name}")
-                else:
+                if not all_permissible_values:
                     node_failed = True
                     logger.warning(f"No values returned for {name}")
             else:
