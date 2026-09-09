@@ -234,13 +234,11 @@ def _expand_owl(
             local_file = OWL_LOCAL_FILES.get(ontology_url)
         if local_file and local_file.exists():
             g.parse(str(local_file))
-            OWL_GRAPHS[ontology_url] = g
         elif "camo.owl" in ontology_url:
             g = open_owl(ontology_url)
-            OWL_GRAPHS[ontology_url] = g
         else:
             g.parse(ontology_url)
-            OWL_GRAPHS[ontology_url] = g
+        OWL_GRAPHS[ontology_url] = g
 
     def get_label(uri):
         for label in g.objects(URIRef(uri), RDFS.label):
