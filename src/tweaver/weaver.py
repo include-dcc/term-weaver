@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 from car_utils import setup_logging
 from rdflib import OWL, RDF, RDFS, Graph, URIRef
-from rdflib.namespace import SKOS
+from rdflib.namespace import DCTERMS, SKOS
 
 from tweaver.__init__ import __version__
 from tweaver.owl_handler import open_owl, save_owl
@@ -210,6 +210,74 @@ def _get_cached_owl(ontology_url: str, cache_path: Path):
     return cache_path
 
 
+def _get_label(g: Graph, uri: str):
+    for label in g.objects(URIRef(uri), RDFS.label):
+        return str(label)
+    return None
+
+
+def _get_description(g: Graph, uri: str):
+    owl_hasdefinition = URIRef(
+        "http://www.geneontology.org/formats/oboInOwl#hasDefinition"
+    )
+    iao_definition = URIRef("http://purl.obolibrary.org/obo/IAO_0000115")
+    for predicate in (
+        SKOS.definition,
+        owl_hasdefinition,
+        iao_definition,
+        DCTERMS.description,
+        RDFS.comment,
+    ):
+        for desc in g.objects(URIRef(uri), predicate):
+            return str(desc)
+    logger.debug(
+        f"No description found for {uri}, predicates tried: {list(g.predicate_objects(URIRef(uri)))}"
+    )
+
+    return None
+
+
+def _get_descendants(g: Graph, node_uri: str, direct_only: bool, predicate=None) -> set:
+    if predicate is None:
+        node_types = {str(obj) for obj in g.objects(URIRef(node_uri), RDF.type)}
+        predicate = (
+            RDFS.subPropertyOf
+            if str(OWL.ObjectProperty) in node_types
+            else RDFS.subClassOf
+        )
+    descendants = set()
+    for s, _, _ in g.triples((None, predicate, URIRef(node_uri))):
+        child_uri = str(s)
+        descendants.add(child_uri)
+        if not direct_only:
+            descendants.update(_get_descendants(g, child_uri, direct_only, predicate))
+    return descendants
+
+
+def _uri_to_curie(uri: str, source_prefix: str, source_ontology: str):
+    output_prefix = PREFIX_DICT.get(
+        source_prefix.upper(),
+        source_prefix,
+    )
+
+    uri = str(uri)
+
+    if "/obo/" in uri:
+        local = uri.rsplit("/obo/", 1)[1]
+        return local.replace("_", ":", 1)
+
+    if "#" in uri:
+        local = uri.rsplit("#", 1)[1]
+        return f"{output_prefix}:{local}"
+
+    ontology_namespace = source_ontology.rsplit("/", 1)[0] + "/"
+    if uri.startswith(ontology_namespace):
+        local = uri[len(ontology_namespace) :]
+        return f"{output_prefix}:{local}"
+
+    return uri
+
+
 def _expand_owl(
     ontology_url: str,
     source_nodes: list,
@@ -219,10 +287,6 @@ def _expand_owl(
     """Expand enum permissible values from an OWL file using rdflib."""
     g = Graph()
 
-    owl_hasdefinition = URIRef(
-        "http://www.geneontology.org/formats/oboInOwl#hasDefinition"
-    )
-    iao_definition = URIRef("http://purl.obolibrary.org/obo/IAO_0000115")
     if ontology_url in OWL_GRAPHS:
         g = OWL_GRAPHS[ontology_url]
         logger.info(f"Using cached RDF graph: {ontology_url}")
@@ -239,65 +303,6 @@ def _expand_owl(
         else:
             g.parse(ontology_url)
         OWL_GRAPHS[ontology_url] = g
-
-    def get_label(uri):
-        for label in g.objects(URIRef(uri), RDFS.label):
-            return str(label)
-        return None
-
-    def get_description(uri):
-        for predicate in (
-            SKOS.definition,
-            owl_hasdefinition,
-            iao_definition,
-        ):
-            for desc in g.objects(URIRef(uri), predicate):
-                return str(desc)
-
-        return None
-
-    def get_descendants(node_uri, direct_only, predicate=None):
-        if predicate is None:
-            node_types = {str(obj) for obj in g.objects(URIRef(node_uri), RDF.type)}
-
-            if str(OWL.ObjectProperty) in node_types:
-                predicate = RDFS.subPropertyOf
-            else:
-                predicate = RDFS.subClassOf
-
-        descendants = set()
-
-        for s, _, _ in g.triples((None, predicate, URIRef(node_uri))):
-            child_uri = str(s)
-            descendants.add(child_uri)
-
-            if not direct_only:
-                descendants.update(get_descendants(child_uri, direct_only, predicate))
-
-        return descendants
-
-    def uri_to_curie(uri, source_prefix, source_ontology):
-        output_prefix = PREFIX_DICT.get(
-            source_prefix.upper(),
-            source_prefix,
-        )
-
-        uri = str(uri)
-
-        if "/obo/" in uri:
-            local = uri.rsplit("/obo/", 1)[1]
-            return local.replace("_", ":", 1)
-
-        if "#" in uri:
-            local = uri.rsplit("#", 1)[1]
-            return f"{output_prefix}:{local}"
-
-        ontology_namespace = source_ontology.rsplit("/", 1)[0] + "/"
-        if uri.startswith(ontology_namespace):
-            local = uri[len(ontology_namespace) :]
-            return f"{output_prefix}:{local}"
-
-        return uri
 
     permissible_values = {}
     for node in source_nodes:
@@ -328,19 +333,19 @@ def _expand_owl(
             continue
 
         if include_self:
-            label = get_label(node_uri)
-            desc = get_description(node_uri)
+            label = _get_label(g, str(node_uri))
+            desc = _get_description(g, str(node_uri))
             entry = {"title": label or node}
             if desc:
                 entry["description"] = desc
             entry["meaning"] = node
             permissible_values[node] = entry
 
-        descendants = get_descendants(node_uri, is_direct)
+        descendants = _get_descendants(g, str(node_uri), is_direct)
         for desc_uri in descendants:
-            curie = uri_to_curie(desc_uri, node.split(":")[0], ontology_url)
-            label = get_label(desc_uri)
-            description = get_description(desc_uri)
+            curie = _uri_to_curie(desc_uri, node.split(":")[0], ontology_url)
+            label = _get_label(g, desc_uri)
+            description = _get_description(g, desc_uri)
             entry = {"title": label or curie}
             if description:
                 entry["description"] = description
@@ -356,7 +361,7 @@ def expand(
 ):
     """Extract Enums from a monolithic LinkML model into individual YAML files
     Args:
-        local_filepath: The file cont aining the monolithic linkml model
+        local_filepath: The file containing the monolithic linkml model
         iri: Optional iri if a specific iri is desired other than the iri derived programattically
     Returns:
         list of enum names
