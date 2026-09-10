@@ -4,18 +4,27 @@ import io
 import logging
 import re
 import subprocess
+import urllib.error
+import xml.sax
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import rdflib
 import yaml
 from car_utils import setup_logging
+from rdflib import OWL, RDF, RDFS, Graph, URIRef
+from rdflib.namespace import DCTERMS, SKOS
 
 from tweaver.__init__ import __version__
+from tweaver.owl_handler import open_fowl2owl, open_owl, save_owl
 
 logger = logging.getLogger(__name__)
 # Rich Logging if rich is installed
 
 
-prefix_dict = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
+OWL_GRAPHS: dict[str, Graph] = {}
+CACHE_MAX_AGE = timedelta(days=30)
+PREFIX_DICT = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
 
 
 def parsed_csv(csv_text: str, endpoint: str, source_nodes: list) -> dict:
@@ -25,7 +34,7 @@ def parsed_csv(csv_text: str, endpoint: str, source_nodes: list) -> dict:
     argument = "children" if endpoint == "-c" else "descendants"
     for row in reader:
         code = row["descendant_code"]
-        for key, value in prefix_dict.items():
+        for key, value in PREFIX_DICT.items():
             code = code.replace(key, value)
         if code.lower() == "no results":
             print(f"No {argument} found for {row['parent_code']}")
@@ -97,22 +106,33 @@ def _compute_minus_codes(
             if "permissible_values" in minus_item:
                 minus_codes.update(minus_item["permissible_values"])
                 continue
-            parsed = _parse_reachable(minus_item.get("reachable_from", {}))
+            minus_reachable = minus_item.get("reachable_from", {})
+            parsed = _parse_reachable(minus_reachable)
             if not parsed["nodes"] or not parsed["ontology"]:
                 continue
-            for node in parsed["nodes"]:
-                minus_codes.add(node)
-                node_values, failed = _expand_enum_for_node(
-                    node,
-                    parsed["ontology"],
-                    enum_file,
-                    endpoint,
-                    parsed,
-                    has_nodes,
-                    iri,
+            source_ontology = minus_reachable.get("source_ontology")
+            if source_ontology.endswith(".owl"):
+                node_values = _expand_owl(
+                    ontology_url=source_ontology,
+                    source_nodes=parsed["nodes"],
+                    is_direct=parsed["is_direct"] or False,
+                    include_self=parsed["include_self"] or False,
                 )
-                if not failed:
-                    minus_codes.update(node_values.keys())
+                minus_codes.update(node_values.keys())
+            else:
+                for node in parsed["nodes"]:
+                    minus_codes.add(node)
+                    node_values, failed = _expand_enum_for_node(
+                        node,
+                        parsed["ontology"],
+                        enum_file,
+                        endpoint,
+                        parsed,
+                        has_nodes,
+                        iri,
+                    )
+                    if not failed:
+                        minus_codes.update(node_values.keys())
     return minus_codes
 
 
@@ -169,6 +189,169 @@ def _write_expanded_enum(
     )
 
 
+def _get_cached_owl(ontology_url: str, cache_path: Path):
+    """Return cached OWL file and re-download it if it is older than 30 days."""
+    if cache_path.exists():
+        modified_at = datetime.fromtimestamp(cache_path.stat().st_mtime, tz=UTC)
+        age = datetime.now(UTC) - modified_at
+        if age <= CACHE_MAX_AGE:
+            logger.info(f"Using cached ontology: {cache_path}")
+            return cache_path
+        logger.info(
+            f"Cached ontology is {age.days} days old. Redownloading: {ontology_url}"
+        )
+    else:
+        logger.info(f"Downloading {ontology_url}")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    save_owl(ontology_url, cache_path)
+    return cache_path
+
+
+def _get_label(g: Graph, uri: str):
+    for label in g.objects(URIRef(uri), RDFS.label):
+        return str(label)
+    return None
+
+
+def _get_description(g: Graph, uri: str):
+    owl_hasdefinition = URIRef(
+        "http://www.geneontology.org/formats/oboInOwl#hasDefinition"
+    )
+    iao_definition = URIRef("http://purl.obolibrary.org/obo/IAO_0000115")
+    for predicate in (
+        SKOS.definition,
+        owl_hasdefinition,
+        iao_definition,
+        DCTERMS.description,
+        RDFS.comment,
+    ):
+        for desc in g.objects(URIRef(uri), predicate):
+            return str(desc)
+    logger.debug(
+        f"No description found for {uri}, predicates tried: {list(g.predicate_objects(URIRef(uri)))}"
+    )
+
+    return None
+
+
+def _get_descendants(g: Graph, node_uri: str, direct_only: bool, predicate=None) -> set:
+    if predicate is None:
+        node_types = {str(obj) for obj in g.objects(URIRef(node_uri), RDF.type)}
+        predicate = (
+            RDFS.subPropertyOf
+            if str(OWL.ObjectProperty) in node_types
+            else RDFS.subClassOf
+        )
+    descendants = set()
+    for s, _, _ in g.triples((None, predicate, URIRef(node_uri))):
+        child_uri = str(s)
+        descendants.add(child_uri)
+        if not direct_only:
+            descendants.update(_get_descendants(g, child_uri, direct_only, predicate))
+    return descendants
+
+
+def _uri_to_curie(uri: str, source_prefix: str, source_ontology: str):
+    output_prefix = PREFIX_DICT.get(
+        source_prefix.upper(),
+        source_prefix,
+    )
+
+    uri = str(uri)
+
+    if "/obo/" in uri:
+        local = uri.rsplit("/obo/", 1)[1]
+        return local.replace("_", ":", 1)
+
+    if "#" in uri:
+        local = uri.rsplit("#", 1)[1]
+        return f"{output_prefix}:{local}"
+
+    ontology_namespace = source_ontology.rsplit("/", 1)[0] + "/"
+    if uri.startswith(ontology_namespace):
+        local = uri[len(ontology_namespace) :]
+        return f"{output_prefix}:{local}"
+
+    return uri
+
+
+def _expand_owl(
+    ontology_url: str,
+    source_nodes: list,
+    is_direct: bool,
+    include_self: bool,
+) -> dict:
+    """Expand enum permissible values from an OWL file using rdflib."""
+    g = Graph()
+
+    if ontology_url in OWL_GRAPHS:
+        g = OWL_GRAPHS[ontology_url]
+        logger.info(f"Using cached RDF graph: {ontology_url}")
+    else:
+        try:
+            g.parse(ontology_url)
+        except (
+            TimeoutError,
+            urllib.error.URLError,
+            rdflib.plugin.PluginException,
+        ):
+            g = open_owl(ontology_url)
+        except xml.sax.SAXParseException:
+            g = open_fowl2owl(ontology_url)
+
+        OWL_GRAPHS[ontology_url] = g
+
+    permissible_values = {}
+    for node in source_nodes:
+        prefix, local = node.split(":", 1)
+
+        node_uri = None
+
+        for subject in g.subjects():
+            subject_str = str(subject)
+
+            if "/obo/" in subject_str:
+                obo_id = subject_str.rsplit("/obo/", 1)[1]
+                if obo_id == f"{prefix}_{local}":
+                    node_uri = subject
+                    break
+
+            elif "#" in subject_str:
+                if subject_str.rsplit("#", 1)[1] == local:
+                    node_uri = subject
+                    break
+
+            elif subject_str.rsplit("/", 1)[-1] == local:
+                node_uri = subject
+                break
+
+        if not node_uri:
+            logger.warning(f"Could not resolve {node} to a URI")
+            continue
+
+        if include_self:
+            label = _get_label(g, str(node_uri))
+            desc = _get_description(g, str(node_uri))
+            entry = {"title": label or node}
+            if desc:
+                entry["description"] = desc
+            entry["meaning"] = node
+            permissible_values[node] = entry
+
+        descendants = _get_descendants(g, str(node_uri), is_direct)
+        for desc_uri in descendants:
+            curie = _uri_to_curie(desc_uri, node.split(":")[0], ontology_url)
+            label = _get_label(g, desc_uri)
+            description = _get_description(g, desc_uri)
+            entry = {"title": label or curie}
+            if description:
+                entry["description"] = description
+            entry["meaning"] = curie
+            permissible_values[curie] = entry
+
+    return permissible_values
+
+
 def expand(
     local_filepath: Path,
     iri: str | None = None,
@@ -206,12 +389,8 @@ def expand(
             has_permissible = (
                 "permissible_values" in enum and enum["permissible_values"]
             )
-
-            if (
-                has_permissible
-                or not reachable["ontology"]
-                or ".owl" in reachable["ontology"]
-            ):
+            has_ontology = (enum.get("reachable_from") or {}).get("source_ontology")
+            if has_permissible or not reachable["ontology"] or not has_ontology:
                 logger.info(f"Skipping {name}. Does not require expansion.")
                 expanded_count += 1
                 continue
@@ -228,22 +407,35 @@ def expand(
             )
             all_permissible_values = {}
             node_failed = False
-
-            for node in reachable["nodes"]:
-                node_values, failed = _expand_enum_for_node(
-                    node,
-                    reachable["ontology"],
-                    enum_file,
-                    endpoint,
-                    reachable,
-                    reachable["nodes"],
-                    iri,
+            logger.info(f"Expanding {name}: {has_ontology}")
+            if has_ontology and has_ontology.endswith(".owl"):
+                all_permissible_values = _expand_owl(
+                    ontology_url=has_ontology,
+                    source_nodes=reachable["nodes"],
+                    is_direct=reachable["is_direct"] or False,
+                    include_self=reachable["include_self"] or False,
                 )
-                if failed:
+                if not all_permissible_values:
                     node_failed = True
-                else:
-                    all_permissible_values.update(node_values)
-                    logger.info(f"Expanded enumeration: {name}")
+                    logger.warning(f"No values returned for {name}")
+            else:
+                for node in reachable["nodes"]:
+                    node_values, failed = _expand_enum_for_node(
+                        node,
+                        reachable["ontology"],
+                        enum_file,
+                        endpoint,
+                        reachable,
+                        reachable["nodes"],
+                        iri,
+                    )
+
+                    if failed:
+                        node_failed = True
+                        logger.warning(f"{node}: Search Dragon expansion failed")
+                    else:
+                        all_permissible_values.update(node_values)
+                        logger.info(f"Expanded enumeration: {name}")
 
             if minus_codes:
                 logger.info(f"Excluding {minus_codes}")
@@ -351,7 +543,6 @@ def exec(cli_args: list[str] | None = None):
     )
 
     args = parser.parse_args(cli_args)
-    # Initialize the logger with whatever the user requested
     setup_logging(level=args.log_level)
     if args.clear:
         clear_permissible_values(args.clear)

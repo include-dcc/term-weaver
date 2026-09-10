@@ -27,25 +27,34 @@ To rerun the expansion script on a file, remove the `permissible_values` field f
 
 Example:
 
-`weaver --clear EnumName`
+`weaver --clear EnumName` or `just clear EnumName`
 
-
-## Model YAML File Conventions
+## Conventions
+> [!Important]
+> The enum files are expanded using either the [Ontology Lookup Service (OLS)](https://www.ebi.ac.uk/ols4/) or OWL files.
+> When using OLS, the format for the `source_ontology` in the enum file is:
+>
+> `{registry}:{ontology}`, such as `bioregistry:edam`
+> 
+> If using an OWL file in the `source_ontology`, the full OWL url must be provided, such as http://edamontology.org/EDAM.owl.
+> The OWL types supported are RDF/XML and OWL2 Functional-Style Syntax.
+### Model YAML File
 The following conventions must be used for files to be findable by the script:
 - The enumeration file names must start with `Enum`<br>
   - Example: EnumDataFile
 
-## Prefixes
+### Prefixes
 The ontology prefixes used in the expanded enumeration files are consistent with prefixes supported by LinkML.
 - snomedct:
     - OLS is used to materialize enumerations and returns the prefix as "SNOMED"
     - The "SNOMED" value is replaced by the standard "snomedct"
 - Other prefixes default to using the casing of the prefix provided in the file's `source_nodes`
 
-## [LinkML properties](https://linkml.io/linkml-model/latest/docs/ReachabilityQuery/) currently supported
+### [LinkML properties](https://linkml.io/linkml-model/latest/docs/ReachabilityQuery/) currently supported
 - source_ontology 
 - source_nodes
 - relationship_types 
   - only supporting rdfs:subClassOf
 - is_direct
 - include_self
+- [minus](https://linkml.io/linkml/schemas/enums.html)
