@@ -4,27 +4,24 @@ import io
 import logging
 import re
 import subprocess
+import urllib.error
+import xml.sax
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import rdflib
 import yaml
 from car_utils import setup_logging
 from rdflib import OWL, RDF, RDFS, Graph, URIRef
 from rdflib.namespace import DCTERMS, SKOS
 
 from tweaver.__init__ import __version__
-from tweaver.owl_handler import open_owl, save_owl
+from tweaver.owl_handler import open_fowl2owl, open_owl, save_owl
 
 logger = logging.getLogger(__name__)
 # Rich Logging if rich is installed
 
 
-OWL_LOCAL_FILES = {
-    "http://purl.org/ga4gh/kin.owl": Path("converted/kin.owl"),
-    "https://github.com/include-dcc/camo/releases/download/v2026-08-19/camo.owl": Path(
-        "converted/camo.owl"
-    ),
-}
 OWL_GRAPHS: dict[str, Graph] = {}
 CACHE_MAX_AGE = timedelta(days=30)
 PREFIX_DICT = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
@@ -114,7 +111,7 @@ def _compute_minus_codes(
             if not parsed["nodes"] or not parsed["ontology"]:
                 continue
             source_ontology = minus_reachable.get("source_ontology")
-            if ".owl" in source_ontology:
+            if source_ontology.endswith(".owl"):
                 node_values = _expand_owl(
                     ontology_url=source_ontology,
                     source_nodes=parsed["nodes"],
@@ -291,17 +288,17 @@ def _expand_owl(
         g = OWL_GRAPHS[ontology_url]
         logger.info(f"Using cached RDF graph: {ontology_url}")
     else:
-        if "ncit.owl" in ontology_url:
-            local_file = _get_cached_owl(ontology_url, Path("cached/ncit.owl"))
-            OWL_LOCAL_FILES[ontology_url] = local_file
-        else:
-            local_file = OWL_LOCAL_FILES.get(ontology_url)
-        if local_file and local_file.exists():
-            g.parse(str(local_file))
-        elif "camo.owl" in ontology_url:
-            g = open_owl(ontology_url)
-        else:
+        try:
             g.parse(ontology_url)
+        except (
+            TimeoutError,
+            urllib.error.URLError,
+            rdflib.plugin.PluginException,
+        ):
+            g = open_owl(ontology_url)
+        except xml.sax.SAXParseException:
+            g = open_fowl2owl(ontology_url)
+
         OWL_GRAPHS[ontology_url] = g
 
     permissible_values = {}
@@ -411,7 +408,7 @@ def expand(
             all_permissible_values = {}
             node_failed = False
             logger.info(f"Expanding {name}: {has_ontology}")
-            if has_ontology and ".owl" in has_ontology:
+            if has_ontology and has_ontology.endswith(".owl"):
                 all_permissible_values = _expand_owl(
                     ontology_url=has_ontology,
                     source_nodes=reachable["nodes"],
