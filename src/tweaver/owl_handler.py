@@ -85,7 +85,7 @@ def exec():
         "--output",
         # required=True,
         type=Path,
-        help="Output file directory for the converted RDF/XML file.",
+        help="Output filename for the converted RDF/XML file.",
     )
     parser.add_argument(
         "-a",
