@@ -11,7 +11,7 @@ from rdflib import Graph
 logger = logging.getLogger(__name__)
 
 
-def fowl2owl(url: str, output_filepath: Path):
+def save_fowl2owl(url: str, output_filepath: Path):
     """Converts an OWL2 Functional-Style Syntax file to RDF/XML format and saves it at user-specified location.
     Args:
         url: The URL of the OWL file to be converted to RDF/XML.
@@ -25,6 +25,23 @@ def fowl2owl(url: str, output_filepath: Path):
     onto = pyhornedowl.open_ontology_from_string(data)
     onto.save_to_file(str(output_filepath))
     logger.info(f"Converted {url} to RDF/XML.")
+
+
+def open_fowl2owl(url: str) -> Graph:
+    ssl._create_default_https_context = ssl._create_unverified_context
+
+    with urllib.request.urlopen(url) as response:
+        data = response.read().decode("utf-8")
+
+    onto = pyhornedowl.open_ontology_from_string(data)
+
+    rdfxml = onto.save_to_string("rdf")
+
+    g = Graph()
+    g.parse(data=rdfxml, format="xml", publicID=url)
+
+    logger.info(f"Converted {url} to RDF/XML.")
+    return g
 
 
 def save_owl(url: str, output_filepath: Path):
@@ -68,7 +85,7 @@ def exec():
         "--output",
         # required=True,
         type=Path,
-        help="Output filename for the converted RDF/XML file.",
+        help="Output file directory for the converted RDF/XML file.",
     )
     parser.add_argument(
         "-a",
@@ -82,7 +99,7 @@ def exec():
     setup_logging(level=args.log_level)
 
     if args.action == "fowl2owl":
-        fowl2owl(args.url, args.output)
+        save_fowl2owl(args.url, args.output)
     if args.action == "save":
         save_owl(args.url, args.output)
     if args.action == "open":

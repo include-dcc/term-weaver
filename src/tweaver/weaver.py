@@ -5,6 +5,7 @@ import logging
 import re
 import subprocess
 import urllib.error
+import xml.sax
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -15,18 +16,12 @@ from rdflib import OWL, RDF, RDFS, Graph, URIRef
 from rdflib.namespace import DCTERMS, SKOS
 
 from tweaver.__init__ import __version__
-from tweaver.owl_handler import open_owl, save_owl
+from tweaver.owl_handler import open_fowl2owl, open_owl, save_owl
 
 logger = logging.getLogger(__name__)
 # Rich Logging if rich is installed
 
 
-OWL_LOCAL_FILES = {
-    "http://purl.org/ga4gh/kin.owl": Path("converted/kin.owl"),
-    "https://github.com/include-dcc/camo/releases/download/v2026-08-19/camo.owl": Path(
-        "converted/camo.owl"
-    ),
-}
 OWL_GRAPHS: dict[str, Graph] = {}
 CACHE_MAX_AGE = timedelta(days=30)
 PREFIX_DICT = {"SNOMED": "snomedct", "SNOMEDCT": "snomedct", "SNOMEDCT_US": "snomedct"}
@@ -293,19 +288,17 @@ def _expand_owl(
         g = OWL_GRAPHS[ontology_url]
         logger.info(f"Using cached RDF graph: {ontology_url}")
     else:
-        local_file = OWL_LOCAL_FILES.get(ontology_url)
+        try:
+            g.parse(ontology_url)
+        except (
+            TimeoutError,
+            urllib.error.URLError,
+            rdflib.plugin.PluginException,
+        ):
+            g = open_owl(ontology_url)
+        except xml.sax.SAXParseException:
+            g = open_fowl2owl(ontology_url)
 
-        if local_file and local_file.exists():
-            g.parse(str(local_file))
-        else:
-            try:
-                g.parse(ontology_url)
-            except (
-                urllib.error.URLError,
-                TimeoutError,
-                rdflib.plugin.PluginException,
-            ):
-                g = open_owl(ontology_url)
         OWL_GRAPHS[ontology_url] = g
 
     permissible_values = {}
