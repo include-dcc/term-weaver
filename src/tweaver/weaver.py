@@ -268,6 +268,8 @@ def _uri_to_curie(uri: str, source_prefix: str, source_ontology: str):
 
     if "#" in uri:
         local = uri.rsplit("#", 1)[1]
+        if "_" in local:
+            local = local.split("_", 1)[1]
         return f"{output_prefix}:{local}"
 
     ontology_namespace = source_ontology.rsplit("/", 1)[0] + "/"
@@ -294,7 +296,12 @@ def _expand_owl(
     else:
         try:
             g.parse(ontology_url)
-        except (TimeoutError, urllib.error.URLError, rdflib.plugin.PluginException):
+        except (
+            TimeoutError,
+            urllib.error.URLError,
+            rdflib.plugin.PluginException,
+            xml.sax._exceptions.SAXParseException,
+        ):
             try:
                 g = open_owl(ontology_url, ssl_no_verify=ssl_no_verify)
             except (xml.sax.SAXParseException, xml.sax._exceptions.SAXParseException):
@@ -318,14 +325,10 @@ def _expand_owl(
                     break
 
             elif "#" in subject_str:
-                if subject_str.rsplit("#", 1)[1] == local:
+                iri_local = subject_str.rsplit("#", 1)[1]
+                if iri_local == local or iri_local.endswith(f"_{local}"):
                     node_uri = subject
                     break
-            # elif "#" in subject_str:
-            #     iri_local = subject_str.rsplit("#", 1)[1]
-            #     if iri_local == local or iri_local.endswith(f"_{local}"):
-            #         node_uri = subject
-            #         break
             elif subject_str.rsplit("/", 1)[-1] == local:
                 node_uri = subject
                 break
