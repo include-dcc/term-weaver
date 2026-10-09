@@ -6,6 +6,7 @@ import re
 import subprocess
 import urllib.error
 import xml.sax
+import xml.sax._exceptions
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -87,6 +88,7 @@ def _parse_reachable(reachable: dict) -> dict:
         "is_direct": reachable.get("is_direct"),
         "include_self": reachable.get("include_self"),
         "minus": reachable.get("minus"),
+        "ssl_no_verify": reachable.get("ssl_no_verify", False),
     }
 
 
@@ -117,6 +119,7 @@ def _compute_minus_codes(
                     source_nodes=parsed["nodes"],
                     is_direct=parsed["is_direct"] or False,
                     include_self=parsed["include_self"] or False,
+                    ssl_no_verify=parsed["ssl_no_verify"] or False,
                 )
                 minus_codes.update(node_values.keys())
             else:
@@ -265,6 +268,8 @@ def _uri_to_curie(uri: str, source_prefix: str, source_ontology: str):
 
     if "#" in uri:
         local = uri.rsplit("#", 1)[1]
+        if "_" in local:
+            local = local.split("_", 1)[1]
         return f"{output_prefix}:{local}"
 
     ontology_namespace = source_ontology.rsplit("/", 1)[0] + "/"
@@ -280,6 +285,7 @@ def _expand_owl(
     source_nodes: list,
     is_direct: bool,
     include_self: bool,
+    ssl_no_verify: bool,
 ) -> dict:
     """Expand enum permissible values from an OWL file using rdflib."""
     g = Graph()
@@ -294,10 +300,12 @@ def _expand_owl(
             TimeoutError,
             urllib.error.URLError,
             rdflib.plugin.PluginException,
+            xml.sax._exceptions.SAXParseException,
         ):
-            g = open_owl(ontology_url)
-        except xml.sax.SAXParseException:
-            g = open_fowl2owl(ontology_url)
+            try:
+                g = open_owl(ontology_url, ssl_no_verify=ssl_no_verify)
+            except (xml.sax.SAXParseException, xml.sax._exceptions.SAXParseException):
+                g = open_fowl2owl(ontology_url, ssl_no_verify=ssl_no_verify)
 
         OWL_GRAPHS[ontology_url] = g
 
@@ -317,10 +325,10 @@ def _expand_owl(
                     break
 
             elif "#" in subject_str:
-                if subject_str.rsplit("#", 1)[1] == local:
+                iri_local = subject_str.rsplit("#", 1)[1]
+                if iri_local == local or iri_local.endswith(f"_{local}"):
                     node_uri = subject
                     break
-
             elif subject_str.rsplit("/", 1)[-1] == local:
                 node_uri = subject
                 break
@@ -414,6 +422,7 @@ def expand(
                     source_nodes=reachable["nodes"],
                     is_direct=reachable["is_direct"] or False,
                     include_self=reachable["include_self"] or False,
+                    ssl_no_verify=reachable["ssl_no_verify"] or False,
                 )
                 if not all_permissible_values:
                     node_failed = True
